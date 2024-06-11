@@ -97,6 +97,10 @@ struct BinaryExpression {
     struct Expression* right;
     Operator op;
 };
+struct VariableExpression {
+    char* variable_name;
+    size_t variable_name_len;
+};
 struct CallExpression {
     char* function_name;
     struct Expression** params;
@@ -109,9 +113,10 @@ struct Expression {
         UNARY,
         BINARY,
         CALL,
+        VARIABLE, 
         INVALID,
     };
-    void FreeCallExpression() {
+    void FreeExpression() {
         if(this->type == Type::CALL) {
             if(this->call.function_name) {
                 delete[] this->call.function_name;
@@ -123,7 +128,12 @@ struct Expression {
             }
             this->type = Type::INVALID;
         }
-
+        if(this->type == Type::VARIABLE) {
+            if(this->variable.variable_name) {
+                delete[] this->variable.variable_name;
+                this->variable.variable_name = nullptr;
+            }
+        }
     }
     Expression() {
         memset(this, 0, sizeof(*this));
@@ -132,23 +142,19 @@ struct Expression {
         memcpy(this, &expr, sizeof(Expression));
     }
     ~Expression() {
-        FreeCallExpression();
+        this->FreeExpression();
     }
     Expression(Expression&& expr) {
-        this->FreeCallExpression();
-        if(expr.type == Type::CALL) {
-            this->type = expr.type;
-            this->call = expr.call;
-            expr.type = Type::INVALID;
-            expr.call.params = nullptr;
-            expr.call.function_name = nullptr;
-        }
+        this->FreeExpression();
+        memcpy(this, &expr, sizeof(*this));
+        memset(&expr, 0, sizeof(*this));
     }
     union {
         ValueExpression value;
         UnaryExpression unary;
         BinaryExpression binary;
         CallExpression call;
+        VariableExpression variable;
     };
     Type type;
     Range range;
@@ -181,6 +187,7 @@ static const std::unordered_map<std::string, FunctionInfo> FUNCTIONS = {
     {"sin", {1, reinterpret_cast<void(*)()>(sinf)}},
     {"cos", {1, reinterpret_cast<void(*)()>(cosf)}},
     {"tan", {1, reinterpret_cast<void(*)()>(tanf)}},
+    {"sqrt", {1, reinterpret_cast<void(*)()>(sqrtf)}},
 };
 static const std::unordered_map<std::string, float> CONSTANTS = {
     {"pi", {static_cast<float>(M_PI)}},
@@ -449,6 +456,14 @@ static InternalErrorInfo EvaluateExpression(Expression* expr, float& output) {
             return err_info;
         }
     }
+    else if(expr->type == Expression::Type::VARIABLE) {
+        // TODO: add this functionality
+        // can't look up any variables, they need to be provided elsewhere
+        err_info.range = expr->range;
+        err_info.info = "Evaluation Error: variable not found\n";
+        err_info.failed = true;
+        return err_info;
+    }
     err_info.info = "Evaluation Error: internel error unkown expression found in expression tree\n";
     err_info.range = expr->range;
     err_info.failed = true;
@@ -579,21 +594,22 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
             else {
                 auto const& c = CONSTANTS.find(tokens[i].val);
                 float val = 0.0f;
+                Expression expr = {};
+                expr.range = tokens[i].range;
                 if(c != CONSTANTS.end()) {
                     val = c->second;
+                    expr.type = Expression::Type::VALUE;
+                    expr.value.val = val;
                 }
                 else {
-                    err_info.info = "Parser Error: variable not found\n";
-                    err_info.range = tokens[i].range;
-                    err_info.failed = true;
-                    return err_info;
+                    expr.type = Expression::Type::VARIABLE;
+                    expr.variable.variable_name = new char[tokens[i].val.size()];
+                    expr.variable.variable_name_len = tokens[i].val.size();
+                    memcpy(expr.variable.variable_name, tokens[i].val.data(), tokens[i].val.size());
                 }
-                Expression value = {};
-                value.type = Expression::Type::VALUE;
-                value.value.val = val;
-                value.range = tokens[i].range;
 
-                calc_data.expression_allocator.push_back(value);
+                // IMPORTANT!: this needs to be moved in, otherwise the internal data will be deleted by the destructor
+                calc_data.expression_allocator.emplace_back(std::move(expr));
                 solving_stack.push_back(&calc_data.expression_allocator.at(calc_data.expression_allocator.size() - 1));
             }
         }
@@ -632,14 +648,18 @@ InternalErrorInfo SortTokens(std::vector<Token>& sorted, Token* tokens, size_t c
         }
         return GetOperatorPrecedence((operator_stack.end()-1)->type);
     };
+    // flush until the first open bracket is hit
     auto flush_stack = [&operator_stack, &sorted]() {
-        if(operator_stack.empty()) {
-            return;
+        while(!operator_stack.empty()) {
+            Token last = std::move(*(operator_stack.end() - 1));
+            operator_stack.pop_back();
+            if(last.type == Token::Type::OPEN_BRACKET) {
+                break;
+            }
+            else {
+                sorted.push_back(std::move(last));
+            }
         }
-        for(size_t i = operator_stack.size() - 1; i != SIZE_MAX; --i) {
-            sorted.push_back(operator_stack.at(i));
-        }
-        operator_stack.clear();
     };
     for(size_t i = 0; i < count; ++i) {
 
@@ -728,18 +748,7 @@ InternalErrorInfo SortTokens(std::vector<Token>& sorted, Token* tokens, size_t c
                 }
             }
             else {
-                // flush the stack until a open bracket is hit
-                while(!operator_stack.empty()) {
-                    Token last = std::move(*(operator_stack.end() - 1));
-                    operator_stack.pop_back();
-                    if(last.type == Token::Type::OPEN_BRACKET) {
-                        break;
-                    }
-                    else {
-                        sorted.push_back(std::move(last));
-                    }
-                }
-
+                flush_stack();
             }
         }
         else if(tokens[i].type == Token::Type::VARIABLE || tokens[i].type == Token::Type::NUMBER) {
