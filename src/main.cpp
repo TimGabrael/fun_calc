@@ -13,9 +13,9 @@
 
 
 int main() {
-    //InitWindow(800, 600, "calc");
-
-    //SetTextLineSpacing(16);
+    InitWindow(800, 600, "calc");
+    SetTargetFPS(60);
+    SetExitKey(KEY_NULL);
 
     float output = 0.0f;
     ErrorData info = CalculateExpression("1 - 2 + 4 * 2.2 * sin(pi * cos(pi))", output);
@@ -26,13 +26,7 @@ int main() {
         std::cout << info.info << std::endl;
     }
 
-    return 0;
-
     bool show_message_box = false;
-
-    SetTargetFPS(60);
-    SetExitKey(KEY_NULL);
-
     while(!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(DARKGRAY);
@@ -53,7 +47,7 @@ int main() {
                 float output = 0.0f;
                 ErrorData err = CalculateExpression(buffer, output);
                 if(err.failed) {
-                    std::cout << "failed: " << err.info << std::endl;
+                    std::cout << err.info << std::endl;
                 }
                 std::cout << "output: " << output << std::endl;
             }

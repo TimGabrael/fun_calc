@@ -689,7 +689,7 @@ InternalErrorInfo SortTokens(std::vector<Token>& sorted, Token* tokens, size_t c
                         }
                     }
                     if(end_bracket_idx == 0) {
-                        err_info.info = "Parser Error: function call is missing closing parantheses\n";
+                        err_info.info = "Parser Error: function call is missing closing parentheses\n";
                         err_info.range = tokens[i].range;
                         err_info.failed = true;
                         return err_info;
@@ -706,6 +706,24 @@ InternalErrorInfo SortTokens(std::vector<Token>& sorted, Token* tokens, size_t c
                     i = end_bracket_idx;
                 }
                 else {
+                    size_t bracket_count = 1;
+                    for(size_t j = i + 1; j < count; ++j) {
+                        if(tokens[j].type == Token::Type::CLOSE_BRACKET) {
+                            bracket_count -= 1;
+                            if(bracket_count == 0) {
+                                break;
+                            }
+                        }
+                        else if(tokens[j].type == Token::Type::OPEN_BRACKET) {
+                            bracket_count += 1;
+                        }
+                    }
+                    if(bracket_count != 0) {
+                        err_info.info = "Parser Error: missing closing parentheses\n";
+                        err_info.range = tokens[i].range;
+                        err_info.failed = true;
+                        return err_info;
+                    }
                     operator_stack.push_back(tokens[i]);
                 }
             }
@@ -762,6 +780,11 @@ static InternalErrorInfo ParseExpression(Token* tokens, size_t count, float& out
 ErrorData CalculateExpression(const std::string& expr, float& output) {
     ErrorData calc_err{};
     calc_err.failed = false;
+    if(expr.size() == 0) {
+        calc_err.failed = true;
+        calc_err.info = "No input provided";
+        return calc_err;
+    }
     std::vector<Token> tokens;
     calc_err = lex(expr, tokens);
     if(calc_err.failed) {
