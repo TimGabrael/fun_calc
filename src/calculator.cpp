@@ -1,10 +1,10 @@
 #include "calculator.h"
 #include <vector>
 #include <iostream>
-#include <unordered_map>
 #define _USE_MATH_DEFINES
 #include <math.h>
-#define ARRSIZE(arr) (sizeof(arr) / sizeof(*arr))
+#include "util.h"
+
 
 struct Range {
     size_t start;       // raw start index
@@ -188,9 +188,11 @@ static const std::unordered_map<std::string, FunctionInfo> FUNCTIONS = {
     {"cos", {1, reinterpret_cast<void(*)()>(cosf)}},
     {"tan", {1, reinterpret_cast<void(*)()>(tanf)}},
     {"sqrt", {1, reinterpret_cast<void(*)()>(sqrtf)}},
+    {"pow", {2, reinterpret_cast<void(*)()>(powf)}},
 };
 static const std::unordered_map<std::string, float> CONSTANTS = {
     {"pi", {static_cast<float>(M_PI)}},
+    {"e", {static_cast<float>(M_E)}},
 };
 
 static bool IsBinaryOperator(Token::Type type) {
@@ -362,16 +364,16 @@ static UnaryExpression::Operator TokenToUnaryOperator(Token::Type type) {
 }
 
 
-static InternalErrorInfo EvaluateExpression(Expression* expr, float& output) {
+static InternalErrorInfo EvaluateExpression(Expression* expr, const VariableData* variables, float& output) {
     InternalErrorInfo err_info = {};
     if(expr->type == Expression::Type::BINARY) {
         float left = 0.0f;
         float right = 0.0f;
-        err_info = EvaluateExpression(expr->binary.left, left);
+        err_info = EvaluateExpression(expr->binary.left, variables, left);
         if(err_info.failed) {
             return err_info;
         }
-        err_info = EvaluateExpression(expr->binary.right, right);
+        err_info = EvaluateExpression(expr->binary.right, variables, right);
         if(err_info.failed) {
             return err_info;
         }
@@ -398,7 +400,7 @@ static InternalErrorInfo EvaluateExpression(Expression* expr, float& output) {
     }
     else if(expr->type == Expression::Type::UNARY) {
         float value = 0.0f;
-        err_info = EvaluateExpression(expr->unary.expr, value);
+        err_info = EvaluateExpression(expr->unary.expr, variables, value);
         if(err_info.failed) {
             return err_info;
         }
@@ -424,23 +426,19 @@ static InternalErrorInfo EvaluateExpression(Expression* expr, float& output) {
                 std::vector<float> parameters;
                 for(size_t i = 0; i < expr->call.params_count; ++i) {
                     float param_val = 0.0f;
-                    err_info = EvaluateExpression(expr->call.params[i], param_val);
+                    err_info = EvaluateExpression(expr->call.params[i], variables, param_val);
                     if(err_info.failed) {
                         return err_info;
                     }
                     parameters.push_back(param_val);
                 }
-                if(expr->call.params_count == 1) {
-                    float(*pfn)(float) = reinterpret_cast<float(*)(float)>(fn->second.function_pointer);
-                    output = pfn(parameters.at(0));
-                    return err_info;
-                }
+                CALL_FUNCTION_MACRO(fn->second.function_pointer, parameters, expr->call.params_count, output)
                 else {
                     err_info.info = "Evaluation Error: so far there are no functions with multiple parameters... what are you doing\n";
                     err_info.range = expr->range;
                     err_info.failed = true;
-                    return err_info;
                 }
+                return err_info;
             }
             else {
                 err_info.info = "Evaluation Error: Parameter mismatch expected: " + std::to_string(fn->second.param_count) + " got: " + std::to_string(expr->call.params_count) + "\n";
@@ -457,8 +455,14 @@ static InternalErrorInfo EvaluateExpression(Expression* expr, float& output) {
         }
     }
     else if(expr->type == Expression::Type::VARIABLE) {
-        // TODO: add this functionality
-        // can't look up any variables, they need to be provided elsewhere
+        std::string var_name(expr->variable.variable_name, expr->variable.variable_name_len);
+        if(variables) {
+            const auto& var = variables->variables.find(var_name);
+            if(var != variables->variables.end()) {
+                output = var->second;
+                return err_info;
+            }
+        }
         err_info.range = expr->range;
         err_info.info = "Evaluation Error: variable not found\n";
         err_info.failed = true;
@@ -767,7 +771,7 @@ InternalErrorInfo SortTokens(std::vector<Token>& sorted, Token* tokens, size_t c
 
     return err_info;
 }
-static InternalErrorInfo ParseExpression(Token* tokens, size_t count, float& output) {
+static InternalErrorInfo ParseExpressionAndEvaluate(Token* tokens, size_t count, float& output) {
     std::vector<Token> sorted;
     InternalErrorInfo err_info = SortTokens(sorted, tokens, count);
     if(err_info.failed) {
@@ -780,9 +784,52 @@ static InternalErrorInfo ParseExpression(Token* tokens, size_t count, float& out
         return err_info;
     }
     if(calc_data.root_expression) {
-        err_info = EvaluateExpression(calc_data.root_expression, output);
+        err_info = EvaluateExpression(calc_data.root_expression, nullptr, output);
     }
     return err_info;
+}
+static InternalErrorInfo ParseExpression(Token* tokens, size_t count, struct ExpressionTree** output) {
+    std::vector<Token> sorted;
+    InternalErrorInfo err_info = SortTokens(sorted, tokens, count);
+    if(err_info.failed) {
+        return err_info;
+    }
+    ExpressionTree* tree = new ExpressionTree{};
+    tree->expression_allocator.reserve(count);
+    err_info = CreateExpressionTree(*tree, sorted.data(), sorted.size());
+    if(err_info.failed) {
+        delete tree;
+        return err_info;
+    }
+    *output = tree;
+    return err_info;
+}
+static void FillVariableInformation(Expression* expr, VariableData& out) {
+    switch(expr->type) {
+        case Expression::Type::VALUE:
+            break;
+        case Expression::Type::UNARY:
+            FillVariableInformation(expr->unary.expr, out);
+            break;
+        case Expression::Type::BINARY:
+            FillVariableInformation(expr->binary.left, out);
+            FillVariableInformation(expr->binary.right, out);
+            break;
+        case Expression::Type::CALL:
+            for(size_t i = 0; i < expr->call.params_count; ++i) {
+                FillVariableInformation(expr->call.params[i], out);
+            }
+            break;
+        case Expression::Type::VARIABLE:
+            {
+                std::string var_name(expr->variable.variable_name, expr->variable.variable_name_len);
+                out.variables[var_name] = 0.0f;
+            }
+            break;
+
+        default:
+            break;
+    };
 }
 
 
@@ -799,12 +846,59 @@ ErrorData CalculateExpression(const std::string& expr, float& output) {
     if(calc_err.failed) {
         return calc_err;
     }
-    InternalErrorInfo err_info = ParseExpression(tokens.data(), tokens.size(), output);
+    InternalErrorInfo err_info = ParseExpressionAndEvaluate(tokens.data(), tokens.size(), output);
     if(err_info.failed) {
         calc_err.info = err_info.info + err_info.range.HighlightPosition(expr);
         calc_err.failed = true;
         return calc_err;
     }
     return calc_err;
+}
+ErrorData ParseFunction(const std::string& func, struct ExpressionTree** output) {
+    ErrorData err_data{};
+    err_data.failed = false;
+    if(func.size() == 0) {
+        err_data.failed = true;
+        err_data.info = "No input provided";
+        return err_data;
+    }
+    std::vector<Token> tokens;
+    err_data = lex(func, tokens);
+    if(!output) {
+        err_data.failed = true;
+        err_data.info = "No output provided";
+        return err_data;
+    }
+    InternalErrorInfo err_info = ParseExpression(tokens.data(), tokens.size(), output);
+    if(err_info.failed) {
+        err_data.info = err_info.info + err_info.range.HighlightPosition(func);
+        err_data.failed = true;
+        return err_data;
+    }
+    return err_data;
+}
+void DeleteExpressionTree(struct ExpressionTree* tree) {
+    if(tree) {
+        delete tree;
+    }
+}
+VariableData GetVariablesInExpressionTree(struct ExpressionTree* tree) {
+    VariableData output = {};
+    if(tree->root_expression) {
+        FillVariableInformation(tree->root_expression, output);
+    }
+    return output;
+}
+ErrorData EvaluateExpressionTree(const std::string& raw_data, struct ExpressionTree* tree, const VariableData& variables, float& output) {
+    ErrorData err_data{};
+    if(tree->root_expression) {
+        InternalErrorInfo err_info = EvaluateExpression(tree->root_expression, &variables, output);
+        if(err_info.failed) {
+            err_data.info = err_info.info + err_info.range.HighlightPosition(raw_data);
+            err_data.failed = true;
+            return err_data;
+        }
+    }
+    return err_data;
 }
 
