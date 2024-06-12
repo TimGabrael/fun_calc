@@ -625,12 +625,12 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
     }
 
     if(solving_stack.size() != 1) {
-        err_info.info = "Parser Error: operator mismatch at some point in the calculation, solving_stack_size: " + std::to_string(solving_stack.size()) + "\n";
-        err_info.range = tokens[0].range;
+        Expression* last = *(solving_stack.end() - 1);
+        err_info.info = "Parser Error: missing operator\n";
+        err_info.range = last->range;
         err_info.failed = true;
         return err_info;
     }
-
     calc_data.root_expression = solving_stack.at(0);
     return err_info;
 }
