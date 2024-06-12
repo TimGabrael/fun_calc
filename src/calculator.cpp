@@ -257,6 +257,7 @@ static ErrorData lex(const std::string& expr, std::vector<Token>& output) {
                 add_token_with_cond(Token::INVALID);
             }
             else if(c == '-') {
+                add_token_with_cond(Token::INVALID);
                 Token::Type tok_type = Token::Type::OPERATOR_SUB;
                 if(!output.empty()) {
                     Token::Type last_type = (output.end()-1)->type;
@@ -267,7 +268,6 @@ static ErrorData lex(const std::string& expr, std::vector<Token>& output) {
                 else {
                     tok_type = Token::Type::OPERATOR_NEG;
                 }
-                add_token_with_cond(Token::INVALID);
                 current_token.val = c;
                 current_token.range.end += 1;
                 current_token.type = tok_type;
