@@ -53,6 +53,7 @@ struct Token {
         OPERATOR_DIV,
         // unary operator version of the sub operator
         OPERATOR_NEG, 
+        OPERATOR_POW, 
         END,
         INVALID,
     };
@@ -91,6 +92,7 @@ struct BinaryExpression {
         SUB,
         MUL,
         DIV,
+        POW,
         INVALID,
     };
     struct Expression* left;
@@ -177,7 +179,8 @@ static constexpr OperatorInfo OPERATORS[] = {
     {Token::Type::OPERATOR_SUB, 2},
     {Token::Type::OPERATOR_MUL, 3},
     {Token::Type::OPERATOR_DIV, 3},
-    {Token::Type::OPERATOR_NEG, 4},
+    {Token::Type::OPERATOR_NEG, 5},
+    {Token::Type::OPERATOR_POW, 4},
 
     // the open bracket is handled like a operator that cancels 
     // out the precedences of all operators that came before it
@@ -200,6 +203,7 @@ static bool IsBinaryOperator(Token::Type type) {
     return type == Token::Type::OPERATOR_ADD || 
         type == Token::Type::OPERATOR_SUB || 
         type == Token::Type::OPERATOR_MUL || 
+        type == Token::Type::OPERATOR_POW || 
         type == Token::Type::OPERATOR_DIV;
 }
 static bool IsUnaryOperator(Token::Type type) {
@@ -290,6 +294,13 @@ static ErrorData lex(const std::string& expr, std::vector<Token>& output) {
                 current_token.type = Token::OPERATOR_DIV;
                 add_token_with_cond(Token::INVALID);
             }
+            else if(c == '^') {
+                add_token_with_cond(Token::INVALID);
+                current_token.val = c;
+                current_token.range.end += 1;
+                current_token.type = Token::OPERATOR_POW;
+                add_token_with_cond(Token::INVALID);
+            }
             else if(c == '(') {
                 add_token_with_cond(Token::INVALID);
                 current_token.val = c;
@@ -355,6 +366,9 @@ static BinaryExpression::Operator TokenToBinaryOperator(Token::Type type) {
     else if(type == Token::Type::OPERATOR_DIV) {
         return BinaryExpression::Operator::DIV;
     }
+    else if(type == Token::Type::OPERATOR_POW) {
+        return BinaryExpression::Operator::POW;
+    }
     return BinaryExpression::Operator::INVALID;
 }
 static UnaryExpression::Operator TokenToUnaryOperator(Token::Type type) {
@@ -393,6 +407,10 @@ static InternalErrorInfo EvaluateExpression(Expression* expr, const VariableData
             case BinaryExpression::Operator::DIV:
                 calc = left / right;
                 break;
+            case BinaryExpression::Operator::POW:
+                calc = powf(left, right);
+                break;
+
             default:
                 break;
         };
