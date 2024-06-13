@@ -4,6 +4,7 @@
 #include "imgui_node_editor.h"
 #include "imgui_stdlib.h"
 #include "imgui_internal.h"
+#include "util.h"
 #include <iostream>
 
 static size_t ID_COUNTER = 0;
@@ -349,7 +350,7 @@ NodeEditor::NodeEditor() {
 
     Node* node = SpawnFunctionNode();
     ed::SetNodePosition(node->id, ImVec2(-250.0f, 220.0f));
-    node = SpawnFunctionNode();
+    node = SpawnPlotNode();
     ed::SetNodePosition(node->id, ImVec2(-250.0f + 450.0f, 220.0f));
     ed::NavigateToContent();
 }
@@ -373,7 +374,7 @@ void NodeEditor::Draw(Vector2 win_size) {
         ImVec2 node_pos = ed::GetNodePosition(node.id);
 
         if(node.type == NodeType::Function) {
-            float text_width = 400.0f;
+            static constexpr float text_width = 400.0f;
             ImGui::SetNextItemWidth(text_width);
             if(ImGui::InputText(("##" + std::to_string(node.id.Get())).c_str(), &node.state, ImGuiInputTextFlags_::ImGuiInputTextFlags_EnterReturnsTrue)) {
                 if(node.tree) {
@@ -389,12 +390,39 @@ void NodeEditor::Draw(Vector2 win_size) {
                     }
                     BuildNode(&node);
                 }
+                
             }
             if(node.err_data.failed) {
                 ImGui::PushStyleColor(ImGuiCol_::ImGuiCol_Text, 0xFF0000FF);
                 ImGui::Text("%s", node.err_data.info.c_str());
                 ImGui::PopStyleColor();
             }
+        }
+        else if(node.type == NodeType::Plot) {
+            // TODO: Traverse all connections to the other node and generate the variable data for each instance of the variables
+            // then find the (hopefully) only missing input and provide a range for this one 
+            // maybe even add a slider to show different points in the graph at different intervals
+            static constexpr float plot_size = 400.0f;
+            float plot_values[100] = {};
+            Node* connection = GetConnectedNode(node.inputs.at(0).id);
+            if(connection) {
+                if(connection->type == NodeType::Function && connection->tree) {
+                    VariableData variables;
+                    variables.variables["x"] = 0.0f;
+                    for(size_t i = 0; i < ARRSIZE(plot_values); ++i) {
+                        variables.variables["x"] = i * 0.1f; // only support x as a little test
+                        ErrorData err = EvaluateExpressionTree(connection->state, connection->tree, variables, plot_values[i]);
+                        if(err.failed) {
+                            connection = nullptr;
+                            break;
+                        }
+                    }
+                }
+                if(connection) {
+                    ImGui::PlotLines(("##" + std::to_string(node.id.Get())).c_str(), plot_values, ARRSIZE(plot_values), 0, NULL, FLT_MAX, FLT_MAX, ImVec2(plot_size, plot_size));
+                }
+            }
+
         }
         ImGui::NewLine();
         const float start_cursor_x = ImGui::GetCursorPosX();
@@ -474,11 +502,10 @@ void NodeEditor::Draw(Vector2 win_size) {
         }
         ImGui::EndPopup();
     }
-
     ed::Resume();
 
 
-
+    BuildNodes();
 
     ed::End();
 }
@@ -487,6 +514,13 @@ Node* NodeEditor::SpawnFunctionNode() {
     this->nodes.emplace_back(GetNextId(), "function", ImColor(255, 128, 128));
     this->nodes.back().type = NodeType::Function;
     this->nodes.back().outputs.emplace_back(GetNextId(), "", PinType::Flow);
+    BuildNode(&this->nodes.back());
+    return &this->nodes.back();
+}
+Node* NodeEditor::SpawnPlotNode() {
+    this->nodes.emplace_back(GetNextId(), "plot", ImColor(255, 255, 255));
+    this->nodes.back().type = NodeType::Plot;
+    this->nodes.back().inputs.emplace_back(GetNextId(), "", PinType::Float);
     BuildNode(&this->nodes.back());
     return &this->nodes.back();
 }
@@ -530,5 +564,19 @@ Pin* NodeEditor::GetPin(ed::PinId pin_id) {
         }
     }
     return nullptr;
+}
+Node* NodeEditor::GetConnectedNode(ed::PinId pin_id) {
+    for(const Link& link : this->links) {
+        if(link.start_pin_id == pin_id || link.end_pin_id == pin_id) {
+            if(link.start_pin_id == pin_id) {
+                return GetPin(link.end_pin_id)->node;
+            }
+            else {
+                return GetPin(link.start_pin_id)->node;
+            }
+        }
+    }
+    return nullptr;
+
 }
 

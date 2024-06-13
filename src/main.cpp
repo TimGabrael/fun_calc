@@ -15,6 +15,7 @@
 
 
 int main() {
+
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);
     InitWindow(800, 600, "calc");
     SetTargetFPS(60);

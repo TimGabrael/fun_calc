@@ -189,6 +189,7 @@ static const std::unordered_map<std::string, FunctionInfo> FUNCTIONS = {
     {"tan", {1, reinterpret_cast<void(*)()>(tanf)}},
     {"sqrt", {1, reinterpret_cast<void(*)()>(sqrtf)}},
     {"pow", {2, reinterpret_cast<void(*)()>(powf)}},
+    {"mod", {2, reinterpret_cast<void(*)()>(fmodf)}},
 };
 static const std::unordered_map<std::string, float> CONSTANTS = {
     {"pi", {static_cast<float>(M_PI)}},

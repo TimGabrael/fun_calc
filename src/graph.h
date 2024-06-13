@@ -20,12 +20,8 @@ enum class PinKind {
     Input,
 };
 enum class NodeType {
-    Blueprint,
-    Simple,
-    Tree,
-    Comment,
-    Houdini,
     Function,
+    Plot,
 };
 struct Pin {
     ed::PinId id;   
@@ -38,10 +34,9 @@ struct Pin {
     }
 
     float GetWidth() const;
-    
 };
 struct Node {
-    Node(int id, const char* name, ImColor color = ImColor(255,255,255)) : id(id), name(name), color(color), type(NodeType::Blueprint), size(0, 0), tree(nullptr), err_data{} { }
+    Node(int id, const char* name, ImColor color = ImColor(255,255,255)) : id(id), name(name), color(color), type(NodeType::Function), size(0, 0), tree(nullptr), err_data{}, plot_start(0.0f, 0.0f), plot_end(0.0f, 0.0f) { }
     ed::NodeId id;
     std::string name;
     std::vector<Pin> inputs;
@@ -49,6 +44,8 @@ struct Node {
     ImColor color;
     NodeType type;
     ImVec2 size;
+    ImVec2 plot_start;
+    ImVec2 plot_end;
     struct ExpressionTree* tree;
     ErrorData err_data;
     std::string state;
@@ -72,6 +69,7 @@ struct NodeEditor {
     void Draw(Vector2 win_size);
 
     Node* SpawnFunctionNode();
+    Node* SpawnPlotNode();
     void BuildNode(Node* node);
     void BuildNodes();
 
@@ -79,6 +77,7 @@ struct NodeEditor {
     bool IsConnected(ed::PinId pin_id) const;
 
     Pin* GetPin(ed::PinId pin_id);
+    Node* GetConnectedNode(ed::PinId pin_id);
 
     ed::EditorContext* ctx = nullptr;
 
