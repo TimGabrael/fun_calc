@@ -162,7 +162,7 @@ struct Expression {
     Range range;
 };
 struct ExpressionTree {
-    std::vector<Expression> expression_allocator;
+    FixedAllocator<Expression> expression_allocator;
     Expression* root_expression;
 };
 
@@ -519,8 +519,8 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
             binary.binary.left = left;
             binary.binary.right = right;
             binary.binary.op = TokenToBinaryOperator(tokens[i].type);
-            calc_data.expression_allocator.push_back(binary);
-            solving_stack.push_back(&calc_data.expression_allocator.at(calc_data.expression_allocator.size()-1));
+            Expression* allocated_binary = calc_data.expression_allocator.emplace_back(std::move(binary));
+            solving_stack.push_back(allocated_binary);
         }
         else if(IsUnaryOperator(tokens[i].type)) {
             Expression unary = {};
@@ -540,8 +540,8 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
             unary.range.start = tokens[i].range.start;
 
 
-            calc_data.expression_allocator.push_back(unary);
-            solving_stack.push_back(&calc_data.expression_allocator.at(calc_data.expression_allocator.size()-1));
+            Expression* allocated_unary = calc_data.expression_allocator.emplace_back(std::move(unary));
+            solving_stack.push_back(allocated_unary);
         }
         else if(tokens[i].type == Token::Type::VARIABLE) {
             if((i+2) < count && tokens[i+1].type == Token::Type::OPEN_BRACKET) {
@@ -611,8 +611,8 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
                 }
 
                 // IMPORTANT!: this needs to be moved in, otherwise the internal data will be deleted by the destructor
-                calc_data.expression_allocator.emplace_back(std::move(call));
-                solving_stack.push_back(&calc_data.expression_allocator.at(calc_data.expression_allocator.size() - 1));
+                Expression* allocated_call = calc_data.expression_allocator.emplace_back(std::move(call));
+                solving_stack.push_back(allocated_call);
             }
             else {
                 auto const& c = CONSTANTS.find(tokens[i].val);
@@ -632,8 +632,8 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
                 }
 
                 // IMPORTANT!: this needs to be moved in, otherwise the internal data will be deleted by the destructor
-                calc_data.expression_allocator.emplace_back(std::move(expr));
-                solving_stack.push_back(&calc_data.expression_allocator.at(calc_data.expression_allocator.size() - 1));
+                Expression* allocated_variable = calc_data.expression_allocator.emplace_back(std::move(expr));
+                solving_stack.push_back(allocated_variable);
             }
         }
         else {
@@ -642,8 +642,8 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
             value.value.val = std::stof(tokens[i].val);
             value.range = tokens[i].range;
 
-            calc_data.expression_allocator.push_back(value);
-            solving_stack.push_back(&calc_data.expression_allocator.at(calc_data.expression_allocator.size() - 1));
+            Expression* allocated_value = calc_data.expression_allocator.emplace_back(std::move(value));
+            solving_stack.push_back(allocated_value);
         }
     }
 
@@ -797,7 +797,6 @@ static InternalErrorInfo ParseExpressionAndEvaluate(Token* tokens, size_t count,
         return err_info;
     }
     ExpressionTree calc_data = {};
-    calc_data.expression_allocator.reserve(count);
     err_info = CreateExpressionTree(calc_data, sorted.data(), sorted.size());
     if(err_info.failed) {
         return err_info;
@@ -814,7 +813,6 @@ static InternalErrorInfo ParseExpression(Token* tokens, size_t count, struct Exp
         return err_info;
     }
     ExpressionTree* tree = new ExpressionTree{};
-    tree->expression_allocator.reserve(count);
     err_info = CreateExpressionTree(*tree, sorted.data(), sorted.size());
     if(err_info.failed) {
         delete tree;
