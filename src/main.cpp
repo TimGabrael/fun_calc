@@ -45,7 +45,12 @@ int main() {
         ImGui::NewFrame();
 
         Vector2 win_size = {static_cast<float>(GetScreenWidth()), static_cast<float>(GetScreenHeight())};
+
+        ImGui::Begin("##editor", NULL, ImGuiWindowFlags_::ImGuiWindowFlags_NoNav | ImGuiWindowFlags_::ImGuiWindowFlags_NoMove | ImGuiWindowFlags_::ImGuiWindowFlags_NoResize | ImGuiWindowFlags_::ImGuiWindowFlags_NoTitleBar);
+
         editor.Draw(win_size);
+
+        ImGui::End();
 
 
         ImGui::Render();
