@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <vector>
+#include <sstream>
 
 #define ARRSIZE(arr) (sizeof(arr) / sizeof(*arr))
 
@@ -150,4 +151,11 @@ struct FixedAllocator {
     std::vector<Data*> allocations;
 };
 
+template <typename T>
+std::string ToString(const T val, const size_t n = 6) {
+    std::ostringstream out;
+    out.precision(n);
+    out << std::fixed << val;
+    return std::move(out).str();
+}
 

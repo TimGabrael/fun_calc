@@ -434,7 +434,7 @@ static size_t GetUnaryOperatorPrecedence(UnaryExpression::Operator op) {
 static std::string PrintExpression(struct Expression* expr) {
     std::string output;
     if(expr->type == Expression::Type::VALUE) {
-        return std::to_string(expr->value.val);
+        return ToString(expr->value.val, 1uLL);
     }
     if(expr->type == Expression::Type::CONSTANT) {
         return std::get<0>(*expr->constant.val);
@@ -1264,7 +1264,7 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
                     return DivideExpressions(simple_left->GetPositive(), simple_right->GetPositive(), tree);
                 }
                 else if(expr->binary.op == BinaryExpression::Operator::SUB) {
-                    return SubtractExpressions(simple_right->GetPositive(), simple_left->GetPositive(), tree);
+                    return SubtractExpressions(simple_right->GetPositive(), simple_left, tree);
                 }
             }
             else {
@@ -1428,7 +1428,12 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
     else if(expr->type == Expression::Type::UNARY) {
         if(expr->unary.op == UnaryExpression::Operator::NEGATIVE) {
             if(expr->unary.expr->IsNegative()) {
-                return expr->GetPositive();
+                return DeepCopyExpression(expr->GetPositive(), tree);
+            }
+            if(expr->unary.expr->type == Expression::Type::VALUE) {
+                Expression* output = DeepCopyExpression(expr->unary.expr, tree);
+                output->value.val = -output->value.val;
+                return output;
             }
         }
     }
@@ -1694,6 +1699,7 @@ ErrorData CalculateDerivative(struct ExpressionTree* tree, const std::string& di
         ExpressionTree* derivative = new ExpressionTree{};
         
         derivative->root_expression = Derive(tree->root_expression, diff_var, derivative);
+
         *out = derivative;
         return err_data;
     }
