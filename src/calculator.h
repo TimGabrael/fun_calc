@@ -22,6 +22,8 @@ ErrorData EvaluateExpressionTree(const std::string& raw_data, struct ExpressionT
 
 ErrorData CalculateDerivative(struct ExpressionTree* tree, const std::string& diff_var, struct ExpressionTree** derivative);
 
+void SimplifyExpressionTree(struct ExpressionTree* input, struct ExpressionTree** output);
+
 std::string PrintExpressions(struct ExpressionTree* tree);
 
 

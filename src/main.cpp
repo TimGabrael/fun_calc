@@ -18,11 +18,14 @@ int main() {
 
     // test derivatives
     ExpressionTree* expr_tree = nullptr;
-    ErrorData err = ParseFunction("pi*x*x*x+cos(x^x)", &expr_tree);
+    ErrorData err = ParseFunction("-(sin(x))", &expr_tree);
     if(err.failed) {
         std::cout << err.info << std::endl;
         return 1;
     }
+    ExpressionTree* simplified_expr_tree = nullptr;
+    SimplifyExpressionTree(expr_tree, &simplified_expr_tree);
+
     ExpressionTree* derivative = nullptr;
     err = CalculateDerivative(expr_tree, "x", &derivative);
     if(err.failed) {
@@ -31,8 +34,17 @@ int main() {
     }
     std::string expression_str = PrintExpressions(expr_tree);
     std::cout << expression_str << std::endl;
+    std::string simpliefied_expression_str = PrintExpressions(simplified_expr_tree);
+    std::cout << simpliefied_expression_str << std::endl;
+
     std::string derivative_str = PrintExpressions(derivative);
     std::cout << derivative_str << std::endl;
+
+    VariableData variables;
+    variables.variables["x"] = 1.0f;
+    float output = 0.0f;
+    EvaluateExpressionTree("", expr_tree, variables, output);
+    std::cout << output << std::endl;
     return 0;
 
     
