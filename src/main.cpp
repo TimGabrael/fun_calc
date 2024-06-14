@@ -16,6 +16,27 @@
 
 int main() {
 
+    // test derivatives
+    ExpressionTree* expr_tree = nullptr;
+    ErrorData err = ParseFunction("x*x*x", &expr_tree);
+    if(err.failed) {
+        std::cout << err.info << std::endl;
+        return 1;
+    }
+    ExpressionTree* derivative = nullptr;
+    err = CalculateDerivative(expr_tree, "x", &derivative);
+    if(err.failed) {
+        std::cout << err.info << std::endl;
+        return 1;
+    }
+    std::string expression_str = PrintExpressions(expr_tree);
+    std::cout << expression_str << std::endl;
+    std::string derivative_str = PrintExpressions(derivative);
+    std::cout << derivative_str << std::endl;
+    return 0;
+
+    
+
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);
     InitWindow(800, 600, "calc");
     SetTargetFPS(60);

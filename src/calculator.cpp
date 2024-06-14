@@ -151,6 +151,12 @@ struct Expression {
         memcpy(this, &expr, sizeof(*this));
         memset(&expr, 0, sizeof(*this));
     }
+    bool IsZero() const {
+        return this->type == Type::VALUE && this->value.val == 0.0f;
+    }
+    bool IsOne() const {
+        return this->type == Type::VALUE && this->value.val == 1.0f;
+    }
     union {
         ValueExpression value;
         UnaryExpression unary;
@@ -188,11 +194,17 @@ static constexpr OperatorInfo OPERATORS[] = {
 };
 static const std::unordered_map<std::string, FunctionInfo> FUNCTIONS = {
     {"sin", {1, reinterpret_cast<void(*)()>(sinf)}},
+    {"arcsin", {1, reinterpret_cast<void(*)()>(asinf)}},
     {"cos", {1, reinterpret_cast<void(*)()>(cosf)}},
+    {"arccos", {1, reinterpret_cast<void(*)()>(acosf)}},
     {"tan", {1, reinterpret_cast<void(*)()>(tanf)}},
+    {"arctan", {1, reinterpret_cast<void(*)()>(atanf)}},
+    {"arctan2", {2, reinterpret_cast<void(*)()>(atan2f)}},
     {"sqrt", {1, reinterpret_cast<void(*)()>(sqrtf)}},
+    {"ln", {1, reinterpret_cast<void(*)()>(logf)}},
     {"pow", {2, reinterpret_cast<void(*)()>(powf)}},
     {"mod", {2, reinterpret_cast<void(*)()>(fmodf)}},
+
 };
 static const std::unordered_map<std::string, float> CONSTANTS = {
     {"pi", {static_cast<float>(M_PI)}},
@@ -376,6 +388,49 @@ static UnaryExpression::Operator TokenToUnaryOperator(Token::Type type) {
         return UnaryExpression::Operator::NEGATIVE;
     }
     return UnaryExpression::Operator::INVALID;
+}
+
+
+static Expression* DeepCopyExpression(Expression* in, ExpressionTree* tree) {
+    if(in->type == Expression::Type::VALUE) {
+        return tree->expression_allocator.push_back(*in);
+    }
+    else if(in->type == Expression::Type::UNARY) {
+        Expression* inner = DeepCopyExpression(in->unary.expr, tree);
+        Expression* unary = tree->expression_allocator.push_back(*in);
+        unary->unary.expr = inner;
+        return unary;
+    }
+    else if(in->type == Expression::Type::BINARY) {
+        Expression* left = DeepCopyExpression(in->binary.left, tree);
+        Expression* right = DeepCopyExpression(in->binary.right, tree);
+        Expression* binary = tree->expression_allocator.push_back(*in);
+        binary->binary.left = left;
+        binary->binary.right = right;
+        return binary;
+    }
+    else if(in->type == Expression::Type::CALL) {
+        Expression* call = tree->expression_allocator.push_back(*in);
+        call->call.function_name = new char[in->call.function_name_len];
+        memcpy(call->call.function_name, in->call.function_name, sizeof(char) * in->call.function_name_len);
+        call->call.function_name_len = in->call.function_name_len;
+        call->call.params = new Expression*[in->call.params_count];
+        call->call.params_count = in->call.params_count;
+        for(size_t i = 0; i < in->call.params_count; ++i) {
+            call->call.params[i] = DeepCopyExpression(in->call.params[i], tree);
+        }
+        return call;
+    }
+    else if(in->type == Expression::Type::VARIABLE) {
+        Expression* var = tree->expression_allocator.push_back(*in);
+        var->variable.variable_name = new char[in->variable.variable_name_len];
+        var->variable.variable_name_len = in->variable.variable_name_len;
+        memcpy(var->variable.variable_name, in->variable.variable_name, sizeof(char) * in->variable.variable_name_len);
+        return var;
+    }
+
+    // ERROR: !!! UNHANDLED CASE !!!
+    return nullptr;   
 }
 
 
@@ -848,6 +903,266 @@ static void FillVariableInformation(Expression* expr, VariableData& out) {
             break;
     };
 }
+static Expression* NegateExpression(Expression* in, ExpressionTree* tree) {
+    if(in->IsZero()) {
+        return in;
+    }
+    Expression* expr = tree->expression_allocator.AllocMemory();
+    expr->type = Expression::Type::UNARY;
+    expr->unary.op = UnaryExpression::Operator::NEGATIVE;
+    expr->unary.expr = expr;
+    return expr;
+}
+static Expression* AddExpressions(Expression* left, Expression* right, ExpressionTree* tree) {
+    if(left->IsZero()) {
+        tree->expression_allocator.Delete(left);
+        return right;
+    }
+    else if(right->IsZero()) {
+        tree->expression_allocator.Delete(right);
+        return left;
+    }
+    Expression* expr = tree->expression_allocator.AllocMemory();
+    expr->type = Expression::Type::BINARY;
+    expr->binary.op = BinaryExpression::Operator::ADD;
+    expr->binary.left = left;
+    expr->binary.right = right;
+    return expr;
+}
+static Expression* SubtractExpressions(Expression* left, Expression* right, ExpressionTree* tree) {
+    if(right->IsZero()) {
+        tree->expression_allocator.Delete(right);
+        return left;
+    }
+    else if(left->IsZero()) {
+        tree->expression_allocator.Delete(left);
+        // don't use NegateExpression, as right can not be 0 at this point
+        Expression* expr = tree->expression_allocator.AllocMemory();
+        expr->type = Expression::Type::UNARY;
+        expr->unary.op = UnaryExpression::Operator::NEGATIVE;
+        expr->unary.expr = right;
+        return expr;
+    }
+    Expression* expr = tree->expression_allocator.AllocMemory();
+    expr->type = Expression::Type::BINARY;
+    expr->binary.op = BinaryExpression::Operator::SUB;
+    expr->binary.left = left;
+    expr->binary.right = right;
+    return expr;
+}
+static Expression* MultiplyExpressions(Expression* left, Expression* right, ExpressionTree* tree) {
+    if(left->IsZero()) {
+        tree->expression_allocator.Delete(right);
+        return left;
+    }
+    else if(right->IsZero()) {
+        tree->expression_allocator.Delete(left);
+        return right;
+    }
+    else if(left->IsOne()) {
+        tree->expression_allocator.Delete(left);
+        return right;
+    }
+    else if(right->IsOne()) {
+        tree->expression_allocator.Delete(right);
+        return left;
+    }
+    Expression* expr = tree->expression_allocator.AllocMemory();
+    expr->type = Expression::Type::BINARY;
+    expr->binary.op = BinaryExpression::Operator::MUL;
+    expr->binary.left = left;
+    expr->binary.right = right;
+    return expr;
+}
+static Expression* DivideExpressions(Expression* left, Expression* right, ExpressionTree* tree) {
+    if(left->IsZero()) {
+        // yes yes sure 0 / 0 is undefined, but i don't care
+        tree->expression_allocator.Delete(right);
+        return left;
+    }
+    else if(right->IsZero()) {
+        tree->expression_allocator.Delete(left);
+        tree->expression_allocator.Delete(right);
+        Expression* expr = tree->expression_allocator.AllocMemory();
+        expr->type = Expression::Type::VALUE;
+        expr->value.val = INFINITY;
+        return expr;
+    }
+    Expression* expr = tree->expression_allocator.AllocMemory();
+    expr->type = Expression::Type::BINARY;
+    expr->binary.op = BinaryExpression::Operator::DIV;
+    expr->binary.left = left;
+    expr->binary.right = right;
+    return expr;
+}
+static Expression* ExponentiateExpressions(Expression* left, Expression* right, ExpressionTree* tree) {
+    if(left->IsZero()) {
+        // yes yes sure 0 ^ 0 is undefined, but i don't care
+        tree->expression_allocator.Delete(right);
+        return left;
+    }
+    else if(right->IsZero()) {
+        tree->expression_allocator.Delete(left);
+        tree->expression_allocator.Delete(right);
+        Expression* expr = tree->expression_allocator.AllocMemory();
+        expr->type = Expression::Type::VALUE;
+        expr->value.val = 1.0f;
+        return expr;
+    }
+    else if(right->IsOne()) {
+        tree->expression_allocator.Delete(right);
+        return left;
+    }
+    Expression* expr = tree->expression_allocator.AllocMemory();
+    expr->type = Expression::Type::BINARY;
+    expr->binary.op = BinaryExpression::Operator::POW;
+    expr->binary.left = left;
+    expr->binary.right = right;
+    return expr;
+}
+static Expression* Derive(Expression* in, const std::string& var, ExpressionTree* out);
+static Expression* DeriveExponentiation(Expression* left_expr, Expression* right_expr, const std::string& var, ExpressionTree* out) {
+    Expression* left = DeepCopyExpression(left_expr, out);
+    Expression* right = DeepCopyExpression(right_expr, out);
+    Expression* exp = ExponentiateExpressions(left, right, out);
+    // this needs to be redone, as it may be 
+    left = DeepCopyExpression(left_expr, out);
+    right = DeepCopyExpression(right_expr, out);
+    
+
+    Expression* call = out->expression_allocator.AllocMemory();
+    call->type = Expression::Type::CALL;
+    call->call.params_count = 1;
+    call->call.params = new Expression*[call->call.params_count];
+    call->call.function_name_len = 3;
+    call->call.function_name = new char[call->call.function_name_len];
+    memcpy(call->call.function_name, "log", call->call.function_name_len);
+    call->call.params[0] = left;
+
+    return MultiplyExpressions(exp, Derive(MultiplyExpressions(call, right, out), var, out), out);
+}
+static Expression* Derive(Expression* in, const std::string& var, ExpressionTree* out) {
+    if(in->type == Expression::Type::VALUE) {
+        Expression* value = out->expression_allocator.push_back(*in);
+        value->value.val = 0.0f;
+        return value;
+    }
+    else if(in->type == Expression::Type::UNARY) {
+        Expression* derivative = Derive(in->unary.expr, var, out);
+        if(derivative->IsZero()) {
+            return derivative;
+        }
+        Expression* unary = out->expression_allocator.AllocMemory();
+        unary->type = Expression::Type::UNARY;
+        unary->unary.op = in->unary.op;
+        unary->unary.expr = derivative;
+        return unary;
+    }
+    else if(in->type == Expression::Type::BINARY) {
+        Expression* left_derivative = Derive(in->binary.left, var, out);
+        Expression* right_derivative = Derive(in->binary.right, var, out);
+        if(in->binary.op == BinaryExpression::Operator::ADD) {
+            return AddExpressions(left_derivative, right_derivative, out);
+        }
+        else if(in->binary.op == BinaryExpression::Operator::SUB) {
+            return SubtractExpressions(left_derivative, right_derivative, out);
+        }
+        else if(in->binary.op == BinaryExpression::Operator::MUL) {
+            Expression* og_left = DeepCopyExpression(in->binary.left, out);
+            Expression* og_right = DeepCopyExpression(in->binary.right, out);
+            return AddExpressions(MultiplyExpressions(left_derivative, og_right, out), MultiplyExpressions(og_left, right_derivative, out), out);
+        }
+        else if(in->binary.op == BinaryExpression::Operator::DIV) {
+            Expression* og = DeepCopyExpression(in, out);
+            Expression* og_right = DeepCopyExpression(in->binary.right, out);
+
+            Expression* derivative_1 = DivideExpressions(left_derivative, og_right, out);
+            Expression* derivative_2 = MultiplyExpressions(NegateExpression(right_derivative, out), og, out);
+            return AddExpressions(derivative_1, derivative_2, out);
+        }
+        else if(in->binary.op == BinaryExpression::Operator::POW) {
+            return DeriveExponentiation(in->binary.left, in->binary.right, var, out);
+        }
+    }
+    else if(in->type == Expression::Type::CALL) {
+        std::string func_name(in->call.function_name, in->call.function_name_len);
+        if(func_name == "pow") {
+            return DeriveExponentiation(in->binary.left, in->binary.right, var, out);
+        }
+        Expression* value = out->expression_allocator.AllocMemory();
+        value->type = Expression::Type::VALUE;
+        value->value.val = 0.0f;
+        std::cout << "ERROR: Derivative of function is not supported yet" << std::endl;
+        return value;
+    }
+    else if(in->type == Expression::Type::VARIABLE) {
+        std::string var_name(in->variable.variable_name, in->variable.variable_name_len);
+        Expression* value = out->expression_allocator.AllocMemory();
+        value->type = Expression::Type::VALUE;
+        std::cout << "var_name: " << var_name << ", " << var << "(" << (int)(var_name == var) << ")" << std::endl;
+        if(var_name == var) {
+            value->value.val = 1.0f;
+        }
+        else {
+            value->value.val = 0.0f;
+        }
+        return value;
+    }
+    Expression* value = out->expression_allocator.AllocMemory();
+    value->type = Expression::Type::VALUE;
+    value->value.val = 0.0f;
+    return value;
+}
+std::string PrintExpression(struct Expression* expr) {
+    std::string output;
+    if(expr->type == Expression::Type::VALUE) {
+        return std::to_string(expr->value.val);
+    }
+    else if(expr->type == Expression::Type::UNARY) {
+        std::string inner = PrintExpression(expr->unary.expr);
+        if(expr->unary.op == UnaryExpression::Operator::NEGATIVE) {
+            return "(-" + inner + ")";
+        }
+    }
+    else if(expr->type == Expression::Type::BINARY) {
+        std::string left = PrintExpression(expr->binary.left);
+        std::string right = PrintExpression(expr->binary.right);
+        std::string operator_str = "+";
+        if(expr->binary.op == BinaryExpression::Operator::SUB) {
+            operator_str = "-";
+        }
+        else if(expr->binary.op == BinaryExpression::Operator::MUL) {
+            operator_str = "*";
+        }
+        else if(expr->binary.op == BinaryExpression::Operator::DIV) {
+            operator_str = "/";
+        }
+        else if(expr->binary.op == BinaryExpression::Operator::POW) {
+            operator_str = "^";
+        }
+        return "(" + left + " " + operator_str + " " + right + ")";
+    }
+    else if(expr->type == Expression::Type::CALL) {
+        std::string func_name(expr->call.function_name, expr->call.function_name_len);
+        std::string full = func_name + "(";
+        for(size_t i = 0; i < expr->call.params_count; ++i) {
+            std::string param = PrintExpression(expr->call.params[i]);
+            full += param;
+            if(i != (expr->call.params_count - 1)) {
+                full += ", ";
+            }
+            else {
+                full += ")";
+            }
+        }
+        return full;
+    }
+    else if(expr->type == Expression::Type::VARIABLE) {
+        std::string variable(expr->variable.variable_name, expr->variable.variable_name_len);
+        return variable;
+    }
+    return "";
+}
 
 
 ErrorData CalculateExpression(const std::string& expr, float& output) {
@@ -919,4 +1234,26 @@ ErrorData EvaluateExpressionTree(const std::string& raw_data, struct ExpressionT
     return err_data;
 }
 
+ErrorData CalculateDerivative(struct ExpressionTree* tree, const std::string& diff_var, struct ExpressionTree** out) {
+    ErrorData err_data{};
+    if(tree->root_expression) {
+        ExpressionTree* derivative = new ExpressionTree{};
+        
+        derivative->root_expression = Derive(tree->root_expression, diff_var, derivative);
+        *out = derivative;
+        return err_data;
+    }
+    else {
+        err_data.info = "no input provided";
+        err_data.failed = true;
+    }
+    return err_data;
+}
+
+std::string PrintExpressions(struct ExpressionTree* tree) {
+    if(tree->root_expression) {
+        return PrintExpression(tree->root_expression);
+    }
+    return "";
+}
 

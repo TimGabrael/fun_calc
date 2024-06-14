@@ -130,8 +130,8 @@ struct FixedAllocator {
         if(element) {
             for(size_t i = 0; i < this->allocations.size(); ++i)  {
                 Data* d = this->allocations.at(i);
-                if(static_cast<uintptr_t>(element) >= d->elements) {
-                    const uintptr_t idx = (static_cast<uintptr_t>(element) - static_cast<uintptr_t>(d->elements)) / sizeof(T);
+                if(reinterpret_cast<uintptr_t>(element) >= reinterpret_cast<uintptr_t>(d->elements)) {
+                    const uintptr_t idx = (reinterpret_cast<uintptr_t>(element) - reinterpret_cast<uintptr_t>(d->elements)) / sizeof(T);
                     if(idx < 64) {
                         const uint64_t mask = ~(1uLL << idx);
                         d->bits &= mask;

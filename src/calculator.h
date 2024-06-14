@@ -20,6 +20,8 @@ VariableData GetVariablesInExpressionTree(struct ExpressionTree* tree);
 // the raw_data is required for error information
 ErrorData EvaluateExpressionTree(const std::string& raw_data, struct ExpressionTree* tree, const VariableData& variables, float& output);
 
+ErrorData CalculateDerivative(struct ExpressionTree* tree, const std::string& diff_var, struct ExpressionTree** derivative);
 
+std::string PrintExpressions(struct ExpressionTree* tree);
 
 
