@@ -5,6 +5,10 @@
 #include <math.h>
 #include "util.h"
 
+static const std::unordered_map<std::string, std::tuple<std::string, float>> CONSTANTS = {
+    {"pi", {"pi", static_cast<float>(M_PI)}},
+    {"e", {"e", static_cast<float>(M_E)}},
+};
 
 struct Range {
     size_t start;       // raw start index
@@ -78,6 +82,9 @@ struct FunctionInfo {
 struct ValueExpression {
     float val;
 };
+struct ConstantExpression {
+    const std::tuple<std::string, float>* val;
+};
 struct UnaryExpression {
     enum Operator {
         NEGATIVE,
@@ -112,6 +119,7 @@ struct CallExpression {
 struct Expression {
     enum Type {
         VALUE,
+        CONSTANT,
         UNARY,
         BINARY,
         CALL,
@@ -159,6 +167,7 @@ struct Expression {
     }
     union {
         ValueExpression value;
+        ConstantExpression constant;
         UnaryExpression unary;
         BinaryExpression binary;
         CallExpression call;
@@ -205,10 +214,6 @@ static const std::unordered_map<std::string, FunctionInfo> FUNCTIONS = {
     {"pow", {2, reinterpret_cast<void(*)()>(powf)}},
     {"mod", {2, reinterpret_cast<void(*)()>(fmodf)}},
 
-};
-static const std::unordered_map<std::string, float> CONSTANTS = {
-    {"pi", {static_cast<float>(M_PI)}},
-    {"e", {static_cast<float>(M_E)}},
 };
 
 static bool IsBinaryOperator(Token::Type type) {
@@ -395,6 +400,9 @@ static Expression* DeepCopyExpression(Expression* in, ExpressionTree* tree) {
     if(in->type == Expression::Type::VALUE) {
         return tree->expression_allocator.push_back(*in);
     }
+    else if(in->type == Expression::Type::CONSTANT) {
+        return tree->expression_allocator.push_back(*in);
+    }
     else if(in->type == Expression::Type::UNARY) {
         Expression* inner = DeepCopyExpression(in->unary.expr, tree);
         Expression* unary = tree->expression_allocator.push_back(*in);
@@ -542,6 +550,9 @@ static InternalErrorInfo EvaluateExpression(Expression* expr, const VariableData
         err_info.failed = true;
         return err_info;
     }
+    else if(expr->type == Expression::Type::CONSTANT) {
+        output = std::get<1>(*expr->constant.val);
+    }
     err_info.info = "Evaluation Error: internel error unkown expression found in expression tree\n";
     err_info.range = expr->range;
     err_info.failed = true;
@@ -671,13 +682,11 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
             }
             else {
                 auto const& c = CONSTANTS.find(tokens[i].val);
-                float val = 0.0f;
                 Expression expr = {};
                 expr.range = tokens[i].range;
                 if(c != CONSTANTS.end()) {
-                    val = c->second;
-                    expr.type = Expression::Type::VALUE;
-                    expr.value.val = val;
+                    expr.type = Expression::Type::CONSTANT;
+                    expr.constant.val = &c->second;
                 }
                 else {
                     expr.type = Expression::Type::VARIABLE;
@@ -880,6 +889,8 @@ static void FillVariableInformation(Expression* expr, VariableData& out) {
     switch(expr->type) {
         case Expression::Type::VALUE:
             break;
+        case Expression::Type::CONSTANT:
+            break;
         case Expression::Type::UNARY:
             FillVariableInformation(expr->unary.expr, out);
             break;
@@ -910,7 +921,7 @@ static Expression* NegateExpression(Expression* in, ExpressionTree* tree) {
     Expression* expr = tree->expression_allocator.AllocMemory();
     expr->type = Expression::Type::UNARY;
     expr->unary.op = UnaryExpression::Operator::NEGATIVE;
-    expr->unary.expr = expr;
+    expr->unary.expr = tree->expression_allocator.push_back(*in);
     return expr;
 }
 static Expression* AddExpressions(Expression* left, Expression* right, ExpressionTree* tree) {
@@ -1030,20 +1041,65 @@ static Expression* DeriveExponentiation(Expression* left_expr, Expression* right
     right = DeepCopyExpression(right_expr, out);
     
 
+    const char* func_name = "log";
     Expression* call = out->expression_allocator.AllocMemory();
     call->type = Expression::Type::CALL;
     call->call.params_count = 1;
     call->call.params = new Expression*[call->call.params_count];
-    call->call.function_name_len = 3;
+    call->call.function_name_len = strnlen_s(func_name, 100);
     call->call.function_name = new char[call->call.function_name_len];
-    memcpy(call->call.function_name, "log", call->call.function_name_len);
+    memcpy(call->call.function_name, func_name, call->call.function_name_len);
     call->call.params[0] = left;
 
     return MultiplyExpressions(exp, Derive(MultiplyExpressions(call, right, out), var, out), out);
 }
+static Expression* DeriveSin(Expression* in, const std::string& var, ExpressionTree* out) {
+    Expression* inner = DeepCopyExpression(in, out);
+    Expression* inner_deriv = Derive(in, var, out);
+
+    const char* func_name = "cos";
+    Expression* call = out->expression_allocator.AllocMemory();
+    call->type = Expression::Type::CALL;
+    call->call.params_count = 1;
+    call->call.params = new Expression*[call->call.params_count];
+    call->call.function_name_len = strnlen_s(func_name, 100);
+    call->call.function_name = new char[call->call.function_name_len];
+    memcpy(call->call.function_name, func_name, call->call.function_name_len);
+    call->call.params[0] = inner;
+
+    return MultiplyExpressions(inner_deriv, call, out);
+}
+static Expression* DeriveCos(Expression* in, const std::string& var, ExpressionTree* out) {
+    Expression* inner = DeepCopyExpression(in, out);
+    Expression* inner_deriv = Derive(in, var, out);
+
+    const char* func_name = "sin";
+    Expression* call = out->expression_allocator.AllocMemory();
+    call->type = Expression::Type::CALL;
+    call->call.params_count = 1;
+    call->call.params = new Expression*[call->call.params_count];
+    call->call.function_name_len = strnlen_s(func_name, 100);
+    call->call.function_name = new char[call->call.function_name_len];
+    memcpy(call->call.function_name, func_name, call->call.function_name_len);
+    call->call.params[0] = inner;
+
+    return MultiplyExpressions(NegateExpression(inner_deriv, out), call, out);
+}
+static Expression* DeriveLog(Expression* in, const std::string& var, ExpressionTree* out) {
+    Expression* inner = DeepCopyExpression(in, out);
+    Expression* inner_deriv = Derive(in, var, out);
+    return DivideExpressions(inner_deriv, inner, out);
+}
+
 static Expression* Derive(Expression* in, const std::string& var, ExpressionTree* out) {
     if(in->type == Expression::Type::VALUE) {
         Expression* value = out->expression_allocator.push_back(*in);
+        value->value.val = 0.0f;
+        return value;
+    }
+    else if(in->type == Expression::Type::CONSTANT) {
+        Expression* value = out->expression_allocator.AllocMemory();
+        value->type = Expression::Type::VALUE;
         value->value.val = 0.0f;
         return value;
     }
@@ -1087,7 +1143,16 @@ static Expression* Derive(Expression* in, const std::string& var, ExpressionTree
     else if(in->type == Expression::Type::CALL) {
         std::string func_name(in->call.function_name, in->call.function_name_len);
         if(func_name == "pow") {
-            return DeriveExponentiation(in->binary.left, in->binary.right, var, out);
+            return DeriveExponentiation(in->call.params[0], in->call.params[1], var, out);
+        }
+        else if(func_name == "sin") {
+            return DeriveSin(in->call.params[0], var, out);
+        }
+        else if(func_name == "cos") {
+            return DeriveCos(in->call.params[0], var, out);
+        }
+        else if(func_name == "log") {
+            return DeriveLog(in->call.params[0], var, out);
         }
         Expression* value = out->expression_allocator.AllocMemory();
         value->type = Expression::Type::VALUE;
@@ -1099,7 +1164,6 @@ static Expression* Derive(Expression* in, const std::string& var, ExpressionTree
         std::string var_name(in->variable.variable_name, in->variable.variable_name_len);
         Expression* value = out->expression_allocator.AllocMemory();
         value->type = Expression::Type::VALUE;
-        std::cout << "var_name: " << var_name << ", " << var << "(" << (int)(var_name == var) << ")" << std::endl;
         if(var_name == var) {
             value->value.val = 1.0f;
         }
@@ -1117,6 +1181,9 @@ std::string PrintExpression(struct Expression* expr) {
     std::string output;
     if(expr->type == Expression::Type::VALUE) {
         return std::to_string(expr->value.val);
+    }
+    if(expr->type == Expression::Type::CONSTANT) {
+        return std::get<0>(*expr->constant.val);
     }
     else if(expr->type == Expression::Type::UNARY) {
         std::string inner = PrintExpression(expr->unary.expr);

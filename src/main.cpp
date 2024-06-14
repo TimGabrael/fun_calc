@@ -18,7 +18,7 @@ int main() {
 
     // test derivatives
     ExpressionTree* expr_tree = nullptr;
-    ErrorData err = ParseFunction("x*x*x", &expr_tree);
+    ErrorData err = ParseFunction("pi*x*x*x+cos(x^x)", &expr_tree);
     if(err.failed) {
         std::cout << err.info << std::endl;
         return 1;
