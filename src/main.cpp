@@ -18,7 +18,9 @@ int main() {
 
     // test derivatives
     ExpressionTree* expr_tree = nullptr;
-    ErrorData err = ParseFunction("2*sin(x^2)^2 + 2*cos(x^2)^2", &expr_tree);
+    //ErrorData err = ParseFunction("2*sin(x^2)^2 - -2*cos(x^2)^2 + 2*x*x - x+1", &expr_tree);
+    ErrorData err = ParseFunction("(2*x^2+2*x-4*sin(x*log(x)))-(2*x^2+2*x-4*sin(x*log(x)))", &expr_tree);
+    //ErrorData err = ParseFunction("2*x*x-x", &expr_tree);
     if(err.failed) {
         std::cout << err.info << std::endl;
         return 1;
@@ -26,14 +28,14 @@ int main() {
     ExpressionTree* simplified_expr_tree = nullptr;
     SimplifyExpressionTree(expr_tree, &simplified_expr_tree);
 
-    ExpressionTree* derivative = nullptr;
-    err = CalculateDerivative(expr_tree, "x", &derivative);
-    if(err.failed) {
-        std::cout << err.info << std::endl;
-        return 1;
-    }
-    ExpressionTree* simplified_derivative_expr_tree = nullptr;
-    SimplifyExpressionTree(derivative, &simplified_expr_tree);
+    //ExpressionTree* derivative = nullptr;
+    //err = CalculateDerivative(expr_tree, "x", &derivative);
+    //if(err.failed) {
+    //    std::cout << err.info << std::endl;
+    //    return 1;
+    //}
+    //ExpressionTree* simplified_derivative_expr_tree = nullptr;
+    //SimplifyExpressionTree(derivative, &simplified_expr_tree);
 
     std::string expression_str = PrintExpressions(expr_tree);
     std::cout << expression_str << std::endl;
@@ -41,18 +43,20 @@ int main() {
     std::cout << simpliefied_expression_str << std::endl;
 
 
-    std::string derivative_str = PrintExpressions(derivative);
-    std::cout << derivative_str << std::endl;
-    std::string simplified_derivative_str = PrintExpressions(simplified_derivative_expr_tree);
-    std::cout << simplified_derivative_str << std::endl;
+    //std::string derivative_str = PrintExpressions(derivative);
+    //std::cout << derivative_str << std::endl;
+    //std::string simplified_derivative_str = PrintExpressions(simplified_derivative_expr_tree);
+    //std::cout << simplified_derivative_str << std::endl;
 
     VariableData variables;
     variables.variables["x"] = 1.0f;
     float output = 0.0f;
     EvaluateExpressionTree("", expr_tree, variables, output);
-    std::cout << "f(x) = " << output << std::endl;
-    EvaluateExpressionTree("", derivative, variables, output);
-    std::cout << "f(x) = " << output << std::endl;
+    std::cout << "f1(x) = " << output << std::endl;
+    EvaluateExpressionTree("", simplified_expr_tree, variables, output);
+    std::cout << "f2(x) = " << output << std::endl;
+    //EvaluateExpressionTree("", derivative, variables, output);
+    //std::cout << "f(x) = " << output << std::endl;
     return 0;
 
     
