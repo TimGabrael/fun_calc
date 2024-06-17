@@ -22,6 +22,7 @@ int main() {
     //ErrorData err = ParseFunction("2*x^2+2*x-4*sin(x*log(x))-(2*x^2+2*x-4*sin(x*log(x)))", &expr_tree);
     //ErrorData err = ParseFunction("x + a - x", &expr_tree);
     ErrorData err = ParseFunction("(a+x)*(a-x)", &expr_tree);
+    //ErrorData err = ParseFunction("e", &expr_tree);
     if(err.failed) {
         std::cout << err.info << std::endl;
         return 1;

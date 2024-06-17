@@ -381,14 +381,26 @@ void NodeEditor::Draw(Vector2 win_size) {
                     DeleteExpressionTree(node.tree);
                     node.tree = nullptr;
                 }
-                node.err_data = ParseFunction(node.state, &node.tree);
-                if(!node.err_data.failed) {
-                    node.inputs.clear();
-                    VariableData variables = GetVariablesInExpressionTree(node.tree);
-                    for(auto& var : variables.variables) {
-                        node.inputs.emplace_back(GetNextId(), var.first.c_str(), PinType::Float);
+                bool invalid_characters = false;
+                for(char c : node.state) {
+                    if(c < 0) {
+                        invalid_characters = true;
                     }
-                    BuildNode(&node);
+                }
+                if(!invalid_characters) {
+                    node.err_data = ParseFunction(node.state, &node.tree);
+                    if(!node.err_data.failed) {
+                        node.inputs.clear();
+                        VariableData variables = GetVariablesInExpressionTree(node.tree);
+                        for(auto& var : variables.variables) {
+                            node.inputs.emplace_back(GetNextId(), var.first.c_str(), PinType::Float);
+                        }
+                        BuildNode(&node);
+                    }
+                }
+                else {
+                    node.err_data.failed = true;
+                    node.err_data.info = "invalid character in input";
                 }
                 
             }

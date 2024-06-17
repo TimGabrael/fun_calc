@@ -731,6 +731,7 @@ static InternalErrorInfo EvaluateExpression(Expression* expr, const VariableData
     }
     else if(expr->type == Expression::Type::CONSTANT) {
         output = std::get<1>(*expr->constant.val);
+        return err_info;
     }
     err_info.info = "Evaluation Error: internel error unkown expression found in expression tree\n";
     err_info.range = expr->range;
@@ -1465,14 +1466,20 @@ static Expression* ReduceExpression(Expression* expr, ExpressionTree* tree) {
         Expression* left = ReduceExpression(expr->binary.left, tree);
         Expression* right = ReduceExpression(expr->binary.right, tree);
         if(ExpressionsEqual(left, right)) {
-            if(expr->binary.op == BinaryExpression::Operator::SUB || expr->binary.op == BinaryExpression::Operator::DIV) {
+            if(expr->binary.op == BinaryExpression::Operator::DIV) {
                 Expression* out = tree->expression_allocator.AllocMemory();
                 out->type = Expression::Type::VALUE;
                 out->value.val = 1.0f;
                 return out;
             }
+            else if(expr->binary.op == BinaryExpression::Operator::SUB) {
+                Expression* out = tree->expression_allocator.AllocMemory();
+                out->type = Expression::Type::VALUE;
+                out->value.val = 0.0f;
+                return out;
+            }
         }
-        else if(left->type == Expression::Type::BINARY) {
+        if(left->type == Expression::Type::BINARY) {
             Expression* ll = ReduceExpression(left->binary.left, tree);
             Expression* lr = ReduceExpression(left->binary.right, tree);
             if(ExpressionsEqual(ll, right)) {
@@ -2167,6 +2174,7 @@ ErrorData CalculateDerivative(struct ExpressionTree* tree, const std::string& di
 void SimplifyExpressionTree(struct ExpressionTree* input) {
     if(input->root_expression) {
         input->root_expression = ExpandExpression(input->root_expression, input);
+        input->root_expression = ReduceExpression(input->root_expression, input);
         input->root_expression = SimplifyExpression(input->root_expression, input);
     }
 }
