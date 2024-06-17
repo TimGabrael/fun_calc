@@ -1479,13 +1479,57 @@ static Expression* ReduceExpression(Expression* expr, ExpressionTree* tree) {
                 return out;
             }
         }
-        if(left->type == Expression::Type::BINARY) {
-            Expression* ll = ReduceExpression(left->binary.left, tree);
-            Expression* lr = ReduceExpression(left->binary.right, tree);
-            if(ExpressionsEqual(ll, right)) {
-                //return nullptr;
+        expr->binary.left = left;
+        expr->binary.right = right;
+
+        // TODO: more cases
+        if(expr->binary.op == BinaryExpression::Operator::ADD || expr->binary.op == BinaryExpression::Operator::SUB) {
+            if(left->type == Expression::Type::BINARY) {
+                Expression* ll = ReduceExpression(left->binary.left, tree);
+                Expression* lr = ReduceExpression(left->binary.right, tree);
+                if(left->binary.op == BinaryExpression::Operator::SUB) {
+                    if(ExpressionsEqual(ll, lr)) {
+                        return right;
+                    }
+                    else {
+                        if(expr->binary.op == BinaryExpression::Operator::SUB) {
+                            if(ExpressionsEqual(ll, right)) {
+                            }
+                            else if(ExpressionsEqual(lr, right)) {
+                            }
+                        }
+                        else {
+                            if(ExpressionsEqual(ll, right)) {
+                            }
+                            else if(ExpressionsEqual(lr, right)) {
+                                return ll;
+                            }
+                        }
+                    }
+                }
+                else if(left->binary.op == BinaryExpression::Operator::ADD) {
+                    if(ExpressionsEqual(ll, right)) {
+
+                    }
+                    if(ExpressionsEqual(lr, right)) {
+                    }
+                }
             }
-            if(ExpressionsEqual(lr, right)) {
+            else if(right->type == Expression::Type::BINARY) {
+                Expression* rl = ReduceExpression(right->binary.left, tree);
+                Expression* rr = ReduceExpression(right->binary.right, tree);
+                if(right->binary.op == BinaryExpression::Operator::SUB) {
+                    if(ExpressionsEqual(left, rl)) {
+                    }
+                    if(ExpressionsEqual(left, rr)) {
+                    }
+                }
+                if(right->binary.op == BinaryExpression::Operator::ADD) {
+                    if(ExpressionsEqual(left, rl)) {
+                    }
+                    if(ExpressionsEqual(left, rr)) {
+                    }
+                }
             }
         }
     }
