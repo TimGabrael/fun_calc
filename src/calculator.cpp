@@ -475,7 +475,7 @@ static std::string PrintExpression(struct Expression* expr) {
         if(left_op_prec < cur_op_prec) {
             left_str = "(" + left + ")";
         }
-        else if(right_op_prec < cur_op_prec) {
+        if(right_op_prec < cur_op_prec) {
             right_str = "(" + right + ")";
         }
         return left_str + " " + operator_str + " " + right_str;
@@ -502,6 +502,77 @@ static std::string PrintExpression(struct Expression* expr) {
     return "";
 }
 
+static bool ExpressionsEqual(Expression* e1, Expression* e2) {
+    if(e1->type != e2->type) {
+        return false;
+    }
+    if(e1->type == Expression::Type::VALUE) {
+        if(e1->value.val == e2->value.val) {
+            return true;
+        }
+    }
+    else if(e1->type == Expression::Type::CONSTANT) {
+        if(e1->constant.val == e2->constant.val) {
+            return true;
+        }
+    }
+    else if(e1->type == Expression::Type::VARIABLE) {
+        if(e1->variable.variable_name_len != e2->variable.variable_name_len) {
+            return false;
+        }
+        if(memcmp(e1->variable.variable_name, e2->variable.variable_name, e1->variable.variable_name_len) == 0) {
+            return true;
+        }
+    }
+    else if(e1->type == Expression::Type::UNARY) {
+        if(e1->unary.op == e2->unary.op) {
+            if(ExpressionsEqual(e1->unary.expr, e2->unary.expr)) {
+                return true;
+            }
+        }
+    }
+    else if(e1->type == Expression::Type::BINARY) {
+        if(e1->binary.op == e2->binary.op) {
+            const bool equal_11 = ExpressionsEqual(e1->binary.left, e2->binary.left);
+            const bool equal_12 = ExpressionsEqual(e1->binary.left, e2->binary.right);
+            const bool equal_21 = ExpressionsEqual(e1->binary.right, e2->binary.left);
+            const bool equal_22 = ExpressionsEqual(e1->binary.right, e2->binary.right);
+            const bool order_dependend = (equal_11 && equal_22);
+            const bool order_independend = order_dependend || (equal_12 && equal_21);
+            if(e1->binary.op == BinaryExpression::Operator::ADD) {
+                return order_independend;
+            }
+            else if(e1->binary.op == BinaryExpression::Operator::SUB) {
+                return order_dependend;
+            }
+            else if(e1->binary.op == BinaryExpression::Operator::MUL) {
+                return order_independend;
+            }
+            else if(e1->binary.op == BinaryExpression::Operator::DIV) {
+                return order_dependend;
+            }
+            else if(e1->binary.op == BinaryExpression::Operator::POW) {
+                return order_dependend;
+            }
+        }
+    }
+    else if(e1->type == Expression::Type::CALL) {
+        if(e1->call.function_name_len != e2->call.function_name_len || e1->call.params_count != e2->call.params_count) {
+            return false;
+        }
+        if(memcmp(e1->call.function_name, e2->call.function_name, e1->call.function_name_len) != 0) {
+            return false;
+        }
+        for(size_t i = 0; i < e1->call.params_count; ++i) {
+            const bool param_equal = ExpressionsEqual(e1->call.params[i], e2->call.params[i]);
+            if(!param_equal) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
 
 static Expression* DeepCopyExpression(Expression* in, ExpressionTree* tree) {
     if(in->type == Expression::Type::VALUE) {
@@ -1040,6 +1111,22 @@ static Expression* AddExpressions(Expression* left, Expression* right, Expressio
         tree->expression_allocator.Delete(right);
         return left;
     }
+    if(left->IsNegative() && !right->IsNegative()) {
+        if(ExpressionsEqual(left->GetPositive(), right)) {
+            Expression* zero_expr = tree->expression_allocator.AllocMemory();
+            zero_expr->type = Expression::Type::VALUE;
+            zero_expr->value.val = 0.0f;
+            return zero_expr;
+        }
+    }
+    else if(!left->IsNegative() && right->IsNegative()) {
+        if(ExpressionsEqual(left, right->GetPositive())) {
+            Expression* zero_expr = tree->expression_allocator.AllocMemory();
+            zero_expr->type = Expression::Type::VALUE;
+            zero_expr->value.val = 0.0f;
+            return zero_expr;
+        }
+    }
     Expression* expr = tree->expression_allocator.AllocMemory();
     expr->type = Expression::Type::BINARY;
     expr->binary.op = BinaryExpression::Operator::ADD;
@@ -1060,6 +1147,12 @@ static Expression* SubtractExpressions(Expression* left, Expression* right, Expr
         expr->unary.op = UnaryExpression::Operator::NEGATIVE;
         expr->unary.expr = right;
         return expr;
+    }
+    if(ExpressionsEqual(left, right)) {
+        Expression* zero_expr = tree->expression_allocator.AllocMemory();
+        zero_expr->type = Expression::Type::VALUE;
+        zero_expr->value.val = 0.0f;
+        return zero_expr;
     }
     Expression* expr = tree->expression_allocator.AllocMemory();
     expr->type = Expression::Type::BINARY;
@@ -1113,6 +1206,12 @@ static Expression* DivideExpressions(Expression* left, Expression* right, Expres
         expr->value.val = INFINITY;
         return expr;
     }
+    if(ExpressionsEqual(left, right)) {
+        Expression* zero_expr = tree->expression_allocator.AllocMemory();
+        zero_expr->type = Expression::Type::VALUE;
+        zero_expr->value.val = 1.0f;
+        return zero_expr;
+    }
     Expression* expr = tree->expression_allocator.AllocMemory();
     expr->type = Expression::Type::BINARY;
     expr->binary.op = BinaryExpression::Operator::DIV;
@@ -1159,77 +1258,6 @@ static Expression* ExponentiateExpressions(Expression* left, Expression* right, 
     return expr;
 }
 
-static bool SimplifiedExpressionEqual(Expression* e1, Expression* e2) {
-    if(e1->type != e2->type) {
-        return false;
-    }
-    if(e1->type == Expression::Type::VALUE) {
-        if(e1->value.val == e2->value.val) {
-            return true;
-        }
-    }
-    else if(e1->type == Expression::Type::CONSTANT) {
-        if(e1->constant.val == e2->constant.val) {
-            return true;
-        }
-    }
-    else if(e1->type == Expression::Type::VARIABLE) {
-        if(e1->variable.variable_name_len != e2->variable.variable_name_len) {
-            return false;
-        }
-        if(memcmp(e1->variable.variable_name, e2->variable.variable_name, e1->variable.variable_name_len) == 0) {
-            return true;
-        }
-    }
-    else if(e1->type == Expression::Type::UNARY) {
-        if(e1->unary.op == e2->unary.op) {
-            if(SimplifiedExpressionEqual(e1->unary.expr, e2->unary.expr)) {
-                return true;
-            }
-        }
-    }
-    else if(e1->type == Expression::Type::BINARY) {
-        if(e1->binary.op == e2->binary.op) {
-            const bool equal_11 = SimplifiedExpressionEqual(e1->binary.left, e2->binary.left);
-            const bool equal_12 = SimplifiedExpressionEqual(e1->binary.left, e2->binary.right);
-            const bool equal_21 = SimplifiedExpressionEqual(e1->binary.right, e2->binary.left);
-            const bool equal_22 = SimplifiedExpressionEqual(e1->binary.right, e2->binary.right);
-            const bool order_dependend = (equal_11 && equal_22);
-            const bool order_independend = order_dependend || (equal_12 && equal_21);
-            if(e1->binary.op == BinaryExpression::Operator::ADD) {
-                return order_independend;
-            }
-            else if(e1->binary.op == BinaryExpression::Operator::SUB) {
-                return order_dependend;
-            }
-            else if(e1->binary.op == BinaryExpression::Operator::MUL) {
-                return order_independend;
-            }
-            else if(e1->binary.op == BinaryExpression::Operator::DIV) {
-                return order_dependend;
-            }
-            else if(e1->binary.op == BinaryExpression::Operator::POW) {
-                return order_dependend;
-            }
-        }
-    }
-    else if(e1->type == Expression::Type::CALL) {
-        if(e1->call.function_name_len != e2->call.function_name_len || e1->call.params_count != e2->call.params_count) {
-            return false;
-        }
-        if(memcmp(e1->call.function_name, e2->call.function_name, e1->call.function_name_len) != 0) {
-            return false;
-        }
-        for(size_t i = 0; i < e1->call.params_count; ++i) {
-            const bool param_equal = SimplifiedExpressionEqual(e1->call.params[i], e2->call.params[i]);
-            if(!param_equal) {
-                return false;
-            }
-        }
-        return true;
-    }
-    return false;
-}
 static Expression* FactorOutExpressions(Expression* left, Expression* right, ExpressionTree* tree, Expression** remaining_left, Expression** remaining_right) {
     if(left->type == right->type) {
         if(left->type == Expression::Type::VALUE) {
@@ -1431,10 +1459,210 @@ static Expression* FactorOutExpressions(Expression* left, Expression* right, Exp
 
     return nullptr;
 }
+// Find any pairs that cancel out and remove them
+static Expression* ReduceExpression(Expression* expr, ExpressionTree* tree) {
+    if(expr->type == Expression::Type::BINARY) {
+        Expression* left = ReduceExpression(expr->binary.left, tree);
+        Expression* right = ReduceExpression(expr->binary.right, tree);
+        if(ExpressionsEqual(left, right)) {
+            if(expr->binary.op == BinaryExpression::Operator::SUB || expr->binary.op == BinaryExpression::Operator::DIV) {
+                Expression* out = tree->expression_allocator.AllocMemory();
+                out->type = Expression::Type::VALUE;
+                out->value.val = 1.0f;
+                return out;
+            }
+        }
+        else if(left->type == Expression::Type::BINARY) {
+            Expression* ll = ReduceExpression(left->binary.left, tree);
+            Expression* lr = ReduceExpression(left->binary.right, tree);
+            if(ExpressionsEqual(ll, right)) {
+                //return nullptr;
+            }
+            if(ExpressionsEqual(lr, right)) {
+            }
+        }
+    }
+    return expr;
+}
+
+// (a + b) * c -> a * c + b * c
+// and so on
+static Expression* ExpandExpression(Expression* expr, ExpressionTree* tree) {
+    if(expr->type == Expression::Type::BINARY) {
+        Expression* left = ExpandExpression(expr->binary.left, tree);
+        Expression* right = ExpandExpression(expr->binary.right, tree);
+        if(expr->binary.op == BinaryExpression::Operator::MUL) {
+            if(left->IsNegative() && right->IsNegative()) {
+                left = left->GetPositive();
+                right = right->GetPositive();
+            }
+
+            if(left->type == Expression::Type::BINARY && right->type == Expression::Type::BINARY) {
+                Expression* ll = ExpandExpression(left->binary.left, tree);
+                Expression* lr = ExpandExpression(left->binary.right, tree);
+
+                Expression* rl = ExpandExpression(right->binary.left, tree);
+                Expression* rr = ExpandExpression(right->binary.right, tree);
+
+                const bool left_seperatable = left->binary.op == BinaryExpression::Operator::ADD || left->binary.op == BinaryExpression::Operator::SUB;
+                const bool right_seperatable = right->binary.op == BinaryExpression::Operator::ADD || right->binary.op == BinaryExpression::Operator::SUB;
+                if(left_seperatable && right_seperatable) {
+                    Expression* mul1 = MultiplyExpressions(ll, rl, tree);
+                    Expression* mul2 = MultiplyExpressions(ll, rr, tree);
+                    Expression* mul3 = MultiplyExpressions(lr, rl, tree);
+                    Expression* mul4 = MultiplyExpressions(lr, rr, tree);
+
+                    Expression* comb = nullptr;
+                    if(mul1->IsNegative() && mul2->IsNegative()) {
+                        if(right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = SubtractExpressions(mul2->GetPositive(), mul1->GetPositive(), tree);
+                        }
+                        else {
+                            comb = SubtractExpressions(mul1, mul2->GetPositive(), tree);
+                        }
+                    }
+                    else if(mul1->IsNegative()) {
+                        if(right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = SubtractExpressions(mul1, mul2, tree);
+                        }
+                        else {
+                            comb = SubtractExpressions(mul2, mul1->GetPositive(), tree);
+                        }
+                    }
+                    else if(mul2->IsNegative()) {
+                        if(right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = AddExpressions(mul1, mul2->GetPositive(), tree);
+                        }
+                        else {
+                            comb = SubtractExpressions(mul1, mul2->GetPositive(), tree);
+                        }
+                    }
+                    else {
+                        if(right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = SubtractExpressions(mul1, mul2, tree);
+                        }
+                        else {
+                            comb = AddExpressions(mul1, mul2, tree);
+                        }
+                    }
+                    if(mul3->IsNegative()) {
+                        if(left->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = AddExpressions(comb, mul3->GetPositive(), tree);
+                        }
+                        else {
+                            comb = SubtractExpressions(comb, mul3->GetPositive(), tree);
+                        }
+                    }
+                    else {
+                        if(left->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = SubtractExpressions(comb, mul3, tree);
+                        }
+                        else {
+                            comb = AddExpressions(comb, mul3, tree);
+                        }
+                    }
+                    if(mul4->IsNegative()) {
+                        if(left->binary.op == BinaryExpression::Operator::SUB && right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = SubtractExpressions(comb, mul4->GetPositive(), tree);
+                        }
+                        else if(left->binary.op == BinaryExpression::Operator::SUB || right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = AddExpressions(comb, mul4->GetPositive(), tree);
+                        }
+                        else {
+                            comb = SubtractExpressions(comb, mul4->GetPositive(), tree);
+                        }
+                    }
+                    else {
+                        if(left->binary.op == BinaryExpression::Operator::SUB && right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = AddExpressions(comb, mul4, tree);
+                        }
+                        else if(left->binary.op == BinaryExpression::Operator::SUB || right->binary.op == BinaryExpression::Operator::SUB) {
+                            comb = SubtractExpressions(comb, mul4, tree);
+                        }
+                        else {
+                            comb = AddExpressions(comb, mul4, tree);
+                        }
+                    }
+                    return comb;
+                }
+                else if(left_seperatable) {
+                    Expression* mul1 = MultiplyExpressions(ll, right, tree);
+                    Expression* mul2 = MultiplyExpressions(lr, right, tree);
+                    if(left->binary.op == BinaryExpression::Operator::ADD) {
+                        return AddExpressions(mul1, mul2, tree);
+                    }
+                    else {
+                        return SubtractExpressions(mul1, mul2, tree);
+                    }
+                }
+                else if(right_seperatable) {
+                    Expression* mul1 = MultiplyExpressions(ll, right, tree);
+                    Expression* mul2 = MultiplyExpressions(lr, right, tree);
+                    if(left->binary.op == BinaryExpression::Operator::ADD) {
+                        return AddExpressions(mul1, mul2, tree);
+                    }
+                    else {
+                        return SubtractExpressions(mul1, mul2, tree);
+                    }
+                }
+            }
+        }
+        expr->binary.left = left;
+        expr->binary.right = right;
+    }
+    else if(expr->type == Expression::Type::UNARY) {
+        Expression* inside = ExpandExpression(expr->unary.expr, tree);
+        if(inside->type == Expression::Type::BINARY) {
+            if(inside->binary.op == BinaryExpression::Operator::ADD || inside->binary.op == BinaryExpression::Operator::SUB) {
+                Expression* left = ExpandExpression(inside->binary.left, tree);
+                Expression* right = ExpandExpression(inside->binary.right, tree);
+                if(inside->binary.op == BinaryExpression::Operator::ADD) {
+                    if(left->IsNegative() && right->IsNegative()) {
+                        inside->binary.left = left->GetPositive();
+                        inside->binary.right = right->GetPositive();
+                        return inside;
+                    }
+                    else if(left->IsNegative()) {
+                        inside->binary.op = BinaryExpression::Operator::SUB;
+                        inside->binary.left = left;
+                        inside->binary.right = right;
+                        return inside;
+                    }
+                    else if(right->IsNegative()) {
+                        inside->binary.op = BinaryExpression::Operator::SUB;
+                        inside->binary.left = right;
+                        inside->binary.right = left;
+                        return inside;
+                    }
+                }
+                else if(inside->binary.op == BinaryExpression::Operator::SUB) {
+                    if(left->IsNegative() && right->IsNegative()) {
+                        inside->binary.left = left->GetPositive();
+                        inside->binary.right = right->GetPositive();
+                        return inside;
+                    }
+                    else if(left->IsNegative() || right->IsNegative()) {
+                        inside->binary.op = BinaryExpression::Operator::ADD;
+                        inside->binary.left = left->GetPositive();
+                        inside->binary.right = right->GetPositive();
+                        return inside;
+                    }
+                }
+            }
+        }
+        if(expr->unary.op == UnaryExpression::Operator::NEGATIVE) {
+            if(inside->IsNegative()) {
+                return inside->GetPositive();
+            }
+        }
+        expr->unary.expr = inside;
+    }
+    return expr;
+}
 
 static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
     if(expr->type == Expression::Type::VALUE || expr->type == Expression::Type::CONSTANT || expr->type == Expression::Type::VARIABLE) {
-        return DeepCopyExpression(expr, tree);
+        return expr;
     }
     else if(expr->type == Expression::Type::CALL) {
         for(size_t i = 0; i < expr->call.params_count; ++i) {
@@ -1442,7 +1670,7 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
             Expression* simple_param = SimplifyExpression(param, tree);
             expr->call.params[i] = simple_param;
         }
-        return DeepCopyExpression(expr, tree);
+        return expr;
     }
     else if(expr->type == Expression::Type::BINARY) {
         Expression* simple_left = SimplifyExpression(expr->binary.left, tree);
@@ -1529,7 +1757,6 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
             }
         }
 
-
         // reduce expressions
         if(expr->binary.op == BinaryExpression::Operator::ADD) {
             if(simple_left->IsZero()) {
@@ -1554,7 +1781,7 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
             // so the combination: x -x is never looked at
             if(simple_left->IsNegative()) {
                 Expression* positive_version = simple_left->GetPositive();
-                if(SimplifiedExpressionEqual(positive_version, simple_right)) {
+                if(ExpressionsEqual(positive_version, simple_right)) {
                     Expression* output = tree->expression_allocator.AllocMemory();
                     output->type = Expression::Type::VALUE;
                     output->value.val = 0.0f;
@@ -1563,7 +1790,7 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
             }
             else if(simple_right->IsNegative()) {
                 Expression* positive_version = simple_right->GetPositive();
-                if(SimplifiedExpressionEqual(simple_left, positive_version)) {
+                if(ExpressionsEqual(simple_left, positive_version)) {
                     Expression* output = tree->expression_allocator.AllocMemory();
                     output->type = Expression::Type::VALUE;
                     output->value.val = 0.0f;
@@ -1578,7 +1805,7 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
             else if(simple_right->IsZero()) {
                 return simple_left;
             }
-            if(SimplifiedExpressionEqual(simple_left, simple_right)) {
+            if(ExpressionsEqual(simple_left, simple_right)) {
                 Expression* output = tree->expression_allocator.AllocMemory();
                 output->type = Expression::Type::VALUE;
                 output->value.val = 0.0f;
@@ -1603,7 +1830,7 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
             // (x*x) -> (x^2)
             // ((x+2)*(x+2) -> ((x+2)^2)
 
-            if(SimplifiedExpressionEqual(simple_left, simple_right)) {
+            if(ExpressionsEqual(simple_left, simple_right)) {
                 Expression* square_val = tree->expression_allocator.AllocMemory();
                 square_val->type = Expression::Type::VALUE;
                 square_val->value.val = 2.0f;
@@ -1668,7 +1895,7 @@ static Expression* SimplifyExpression(Expression* expr, ExpressionTree* tree) {
     //std::cout << "Expression got through" << std::endl;
     //std::cout << PrintExpression(expr) << std::endl;
 
-    return DeepCopyExpression(expr, tree);
+    return expr;
 }
 
 
@@ -1937,10 +2164,18 @@ ErrorData CalculateDerivative(struct ExpressionTree* tree, const std::string& di
     return err_data;
 }
 
-void SimplifyExpressionTree(struct ExpressionTree* input, struct ExpressionTree** output) {
+void SimplifyExpressionTree(struct ExpressionTree* input) {
     if(input->root_expression) {
-        *output = new ExpressionTree{};
-        (*output)->root_expression = SimplifyExpression(input->root_expression, *output);
+        input->root_expression = ExpandExpression(input->root_expression, input);
+        input->root_expression = SimplifyExpression(input->root_expression, input);
+    }
+}
+void CopyExpressionTree(struct ExpressionTree* in, struct ExpressionTree** out) {
+    if(out) {
+        if(!*out) {
+            *out = new ExpressionTree{};
+        }
+        (*out)->root_expression = DeepCopyExpression(in->root_expression, *out);
     }
 }
 

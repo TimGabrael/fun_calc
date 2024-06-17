@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <vector>
 #include <sstream>
+#include <iostream>
 
 #define ARRSIZE(arr) (sizeof(arr) / sizeof(*arr))
 

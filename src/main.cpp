@@ -19,14 +19,16 @@ int main() {
     // test derivatives
     ExpressionTree* expr_tree = nullptr;
     //ErrorData err = ParseFunction("2*sin(x^2)^2 - -2*cos(x^2)^2 + 2*x*x - x+1", &expr_tree);
-    ErrorData err = ParseFunction("(2*x^2+2*x-4*sin(x*log(x)))-(2*x^2+2*x-4*sin(x*log(x)))", &expr_tree);
-    //ErrorData err = ParseFunction("2*x*x-x", &expr_tree);
+    //ErrorData err = ParseFunction("2*x^2+2*x-4*sin(x*log(x))-(2*x^2+2*x-4*sin(x*log(x)))", &expr_tree);
+    //ErrorData err = ParseFunction("x + a - x", &expr_tree);
+    ErrorData err = ParseFunction("(a+x)*(a-x)", &expr_tree);
     if(err.failed) {
         std::cout << err.info << std::endl;
         return 1;
     }
     ExpressionTree* simplified_expr_tree = nullptr;
-    SimplifyExpressionTree(expr_tree, &simplified_expr_tree);
+    CopyExpressionTree(expr_tree, &simplified_expr_tree);
+    SimplifyExpressionTree(simplified_expr_tree);
 
     //ExpressionTree* derivative = nullptr;
     //err = CalculateDerivative(expr_tree, "x", &derivative);
@@ -34,8 +36,6 @@ int main() {
     //    std::cout << err.info << std::endl;
     //    return 1;
     //}
-    //ExpressionTree* simplified_derivative_expr_tree = nullptr;
-    //SimplifyExpressionTree(derivative, &simplified_expr_tree);
 
     std::string expression_str = PrintExpressions(expr_tree);
     std::cout << expression_str << std::endl;
@@ -50,6 +50,7 @@ int main() {
 
     VariableData variables;
     variables.variables["x"] = 1.0f;
+    variables.variables["a"] = 5.0f;
     float output = 0.0f;
     EvaluateExpressionTree("", expr_tree, variables, output);
     std::cout << "f1(x) = " << output << std::endl;
