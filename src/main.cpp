@@ -21,8 +21,13 @@ int main() {
     //ErrorData err = ParseFunction("2*sin(x^2)^2 - -2*cos(x^2)^2 + 2*x*x - x+1", &expr_tree);
     //ErrorData err = ParseFunction("2*x^2+2*x-4*sin(x*log(x))-(2*x^2+2*x-4*sin(x*log(x)))", &expr_tree);
     //ErrorData err = ParseFunction("x + a - x", &expr_tree);
-    ErrorData err = ParseFunction("(a+x)*(a-x)", &expr_tree);
-    //ErrorData err = ParseFunction("e", &expr_tree);
+    //ErrorData err = ParseFunction("(a+x)*(a-x)-2*x*x", &expr_tree);
+    //ErrorData err = ParseFunction("3*x*x-2*x*x", &expr_tree);
+    //ErrorData err = ParseFunction("3*x*x-2*x*x+(x*x-3*x*x)", &expr_tree);
+    //ErrorData err = ParseFunction("3*x-x*2+4*x", &expr_tree);
+    ErrorData err = ParseFunction("3*x-x*2", &expr_tree);
+    //ErrorData err = ParseFunction("x*x-x", &expr_tree);
+    //ErrorData err = ParseFunction("x-x*x", &expr_tree);
     if(err.failed) {
         std::cout << err.info << std::endl;
         return 1;
@@ -50,7 +55,7 @@ int main() {
     //std::cout << simplified_derivative_str << std::endl;
 
     VariableData variables;
-    variables.variables["x"] = 1.0f;
+    variables.variables["x"] = 3.0f;
     variables.variables["a"] = 5.0f;
     float output = 0.0f;
     EvaluateExpressionTree("", expr_tree, variables, output);
