@@ -24,8 +24,9 @@ int main() {
     //ErrorData err = ParseFunction("(a+x)*(a-x)-2*x*x", &expr_tree);
     //ErrorData err = ParseFunction("3*x*x-2*x*x", &expr_tree);
     //ErrorData err = ParseFunction("3*x*x-2*x*x+(x*x-3*x*x)", &expr_tree);
-    //ErrorData err = ParseFunction("3*x-x*2+4*x", &expr_tree);
-    ErrorData err = ParseFunction("3*x-x*2", &expr_tree);
+    //ErrorData err = ParseFunction("3*x*4", &expr_tree);
+    ErrorData err = ParseFunction("3*x*(1+2)", &expr_tree);
+    //ErrorData err = ParseFunction("3*x-x*2", &expr_tree);
     //ErrorData err = ParseFunction("x*x-x", &expr_tree);
     //ErrorData err = ParseFunction("x-x*x", &expr_tree);
     if(err.failed) {
