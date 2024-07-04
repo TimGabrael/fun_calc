@@ -25,7 +25,8 @@ int main() {
     //ErrorData err = ParseFunction("3*x*x-2*x*x", &expr_tree);
     //ErrorData err = ParseFunction("3*x*x-2*x*x+(x*x-3*x*x)", &expr_tree);
     //ErrorData err = ParseFunction("3*x*4", &expr_tree);
-    ErrorData err = ParseFunction("3*x*(1+2)", &expr_tree);
+    //ErrorData err = ParseFunction("3*x*(1*x+2)", &expr_tree);
+    ErrorData err = ParseFunction("(x-3)*(x+2)", &expr_tree);
     //ErrorData err = ParseFunction("3*x-x*2", &expr_tree);
     //ErrorData err = ParseFunction("x*x-x", &expr_tree);
     //ErrorData err = ParseFunction("x-x*x", &expr_tree);
@@ -37,12 +38,6 @@ int main() {
     CopyExpressionTree(expr_tree, &simplified_expr_tree);
     SimplifyExpressionTree(simplified_expr_tree);
 
-    //ExpressionTree* derivative = nullptr;
-    //err = CalculateDerivative(expr_tree, "x", &derivative);
-    //if(err.failed) {
-    //    std::cout << err.info << std::endl;
-    //    return 1;
-    //}
 
     std::string expression_str = PrintExpressions(expr_tree);
     std::cout << expression_str << std::endl;
@@ -50,8 +45,15 @@ int main() {
     std::cout << simpliefied_expression_str << std::endl;
 
 
+    //ExpressionTree* derivative = nullptr;
+    //err = CalculateDerivative(expr_tree, "x", &derivative);
+    //if(err.failed) {
+    //    std::cout << err.info << std::endl;
+    //    return 1;
+    //}
+    //SimplifyExpressionTree(derivative);
     //std::string derivative_str = PrintExpressions(derivative);
-    //std::cout << derivative_str << std::endl;
+    //std::cout << "derivative: " << derivative_str << std::endl;
     //std::string simplified_derivative_str = PrintExpressions(simplified_derivative_expr_tree);
     //std::cout << simplified_derivative_str << std::endl;
 
@@ -94,6 +96,7 @@ int main() {
 
     NodeEditor editor;
     while(!WindowShouldClose()) {
+
         ImGui_ImplRaylib_ProcessEvents();
         ImGui_ImplRaylib_NewFrame();
         ImGui::NewFrame();

@@ -364,7 +364,6 @@ void NodeEditor::Draw(Vector2 win_size) {
     ImGui::SetWindowSize({win_size.x, win_size.y});
     ImGui::SetWindowPos({0.0f, 0.0f});
 
-
     ImVec2 cursor_pos = ImGui::GetCursorScreenPos();
 
     for(Node& node : this->nodes) {
