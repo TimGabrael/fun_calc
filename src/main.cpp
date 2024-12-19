@@ -16,20 +16,9 @@
 
 int main() {
 
-    // test derivatives
+    // test derivative
     ExpressionTree* expr_tree = nullptr;
-    //ErrorData err = ParseFunction("2*sin(x^2)^2 - -2*cos(x^2)^2 + 2*x*x - x+1", &expr_tree);
-    //ErrorData err = ParseFunction("2*x^2+2*x-4*sin(x*log(x))-(2*x^2+2*x-4*sin(x*log(x)))", &expr_tree);
-    //ErrorData err = ParseFunction("x + a - x", &expr_tree);
-    //ErrorData err = ParseFunction("(a+x)*(a-x)-2*x*x", &expr_tree);
-    //ErrorData err = ParseFunction("3*x*x-2*x*x", &expr_tree);
-    //ErrorData err = ParseFunction("3*x*x-2*x*x+(x*x-3*x*x)", &expr_tree);
-    //ErrorData err = ParseFunction("3*x*4", &expr_tree);
-    //ErrorData err = ParseFunction("3*x*(1*x+2)", &expr_tree);
     ErrorData err = ParseFunction("(x-3)*(x+2)", &expr_tree);
-    //ErrorData err = ParseFunction("3*x-x*2", &expr_tree);
-    //ErrorData err = ParseFunction("x*x-x", &expr_tree);
-    //ErrorData err = ParseFunction("x-x*x", &expr_tree);
     if(err.failed) {
         std::cout << err.info << std::endl;
         return 1;

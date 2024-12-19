@@ -4,6 +4,7 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
 #include "util.h"
+#include <functional>
 
 static const std::unordered_map<std::string, std::tuple<std::string, float>> CONSTANTS = {
     {"pi", {"pi", static_cast<float>(M_PI)}},
@@ -244,6 +245,9 @@ static const std::unordered_map<std::string, FunctionInfo> FUNCTIONS = {
     {"pow", {2, reinterpret_cast<void(*)()>(powf)}},
     {"mod", {2, reinterpret_cast<void(*)()>(fmodf)}},
 };
+
+
+
 
 static bool IsBinaryOperator(Token::Type type) {
     return type == Token::Type::OPERATOR_ADD || 
@@ -904,7 +908,7 @@ static InternalErrorInfo CreateExpressionTree(ExpressionTree& calc_data, Token* 
 }
 // reorder the tokens: (shuntin yard algorithm)
 // into reverse polish notation
-InternalErrorInfo SortTokens(std::vector<Token>& sorted, Token* tokens, size_t count) {
+static InternalErrorInfo SortTokens(std::vector<Token>& sorted, Token* tokens, size_t count) {
     InternalErrorInfo err_info = {};
     sorted.reserve(count);
 
@@ -1303,6 +1307,179 @@ static Expression* ApplyBinaryExpression(Expression* left, Expression* right, Bi
     }
     return nullptr;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct AlgebraicRule {
+    //std::function<bool(Expression* expr, bool inverse)> is_applicable;
+    bool(*is_applicable)(Expression* expr, bool inverse) = nullptr;
+    void(*apply)(ExpressionTree* tree, Expression* expr, bool inverse) = nullptr;
+};
+enum class Rules : uint32_t {
+    DISTRIBUTIVE,
+    COMMUTATIVE,
+    NUM,
+};
+
+// DISTRIBUTIVE
+// normal:  a * b + a * c = a * (b + c)
+// inverse: a * (b + c) = a * b + a * c
+static bool IsInverseDistributiveApplicable(Expression* expr) {
+    if(expr->type == Expression::Type::BINARY && expr->binary.op == BinaryExpression::MUL) {
+        if(expr->binary.left->type == Expression::Type::BINARY && expr->binary.left->binary.op == BinaryExpression::MUL) {
+            if(expr->binary.right->type == Expression::Type::BINARY && (expr->binary.op == BinaryExpression::Operator::ADD || expr->binary.op == BinaryExpression::Operator::SUB)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+static bool IsDistributiveApplicable(Expression* expr) {
+    if(expr->type == Expression::Type::BINARY && (expr->binary.op == BinaryExpression::Operator::ADD || expr->binary.op == BinaryExpression::Operator::SUB)) {
+        if(expr->binary.left->type == Expression::Type::BINARY && expr->binary.left->binary.op == BinaryExpression::Operator::MUL) {
+            if(expr->binary.right->type == Expression::Type::BINARY && expr->binary.right->binary.op == BinaryExpression::Operator::MUL) {
+                if(ExpressionsEqual(expr->binary.left->binary.left, expr->binary.right->binary.left)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+static void ApplyInverseDistributive(ExpressionTree* tree, Expression* expr) {
+    Expression* left_copy = DeepCopyExpression(expr->binary.left, tree);
+    Expression* ll_mul = MultiplyExpressions(expr->binary.left, expr->binary.right->binary.left, tree);
+    Expression* lr_mul = MultiplyExpressions(left_copy, expr->binary.right->binary.right, tree);
+
+    BinaryExpression::Operator op = expr->binary.right->binary.op;
+    tree->expression_allocator.Delete(expr->binary.right);
+
+    expr->binary.left = ll_mul;
+    expr->binary.right = lr_mul;
+    expr->binary.op = op;
+}
+static void ApplyDistributive(ExpressionTree* tree, Expression* expr) {
+    Expression* a = expr->binary.left->binary.left;
+    Expression* b = expr->binary.left->binary.right;
+    Expression* c = expr->binary.right->binary.right;
+
+    tree->expression_allocator.Delete(expr->binary.left);
+    tree->expression_allocator.Delete(expr->binary.right->binary.left);
+
+    expr->binary.right->binary.left = b;
+    expr->binary.right->binary.op = expr->binary.op;
+    
+    expr->binary.op = BinaryExpression::Operator::MUL;
+}
+
+static bool IsCommutativeApplicable(Expression* expr) {
+    if(expr->type == Expression::Type::BINARY && 
+            (expr->binary.op == BinaryExpression::Operator::MUL ||
+             expr->binary.op == BinaryExpression::Operator::ADD ||
+             expr->binary.op == BinaryExpression::Operator::DIV ||
+             expr->binary.op == BinaryExpression::Operator::SUB)) {
+        return true;
+    }
+    return false;
+}
+static void ApplyCommutative(ExpressionTree* tree, Expression* expr) {
+    if(expr->binary.op == BinaryExpression::Operator::SUB) {
+        Expression* nright = NegateExpression(expr->binary.right, tree);
+        expr->binary.op = BinaryExpression::Operator::ADD;
+        expr->binary.right = nright;
+    }
+    else if(expr->binary.op == BinaryExpression::Operator::DIV) {
+        Expression* one_expr = tree->expression_allocator.AllocMemory();
+        one_expr->type = Expression::Type::VALUE;
+        one_expr->value.val = 1.0f;
+        Expression* one_over_right = DivideExpressions(one_expr, expr->binary.right, tree);
+        expr->binary.op = BinaryExpression::Operator::MUL;
+        expr->binary.right = one_over_right;
+    }
+    else if(expr->binary.op == BinaryExpression::Operator::MUL) {
+        if(expr->binary.left->type == Expression::Type::BINARY && expr->binary.left->binary.op == BinaryExpression::Operator::DIV) {
+            if(expr->binary.left->binary.left->IsOne()) {
+                Expression* new_left = expr->binary.left->binary.right;
+                tree->expression_allocator.Delete(expr->binary.left->binary.left);
+                tree->expression_allocator.Delete(expr->binary.left);
+                expr->binary.left = new_left;
+                expr->binary.op = BinaryExpression::Operator::DIV;
+            }
+        }
+    }
+    else if(expr->binary.op == BinaryExpression::Operator::ADD) {
+        bool was_negative = false;
+        if(expr->binary.left->type == Expression::Type::UNARY && expr->binary.left->unary.op == UnaryExpression::Operator::NEGATIVE) {
+            Expression* pos_expr = expr->binary.left->unary.expr;
+            tree->expression_allocator.Delete(expr->binary.left);
+            expr->binary.left = pos_expr;
+            was_negative = true;
+        }
+        else if(expr->binary.left->type == Expression::Type::VALUE && expr->binary.left->value.val < 0.0f) {
+            expr->binary.left->value.val = std::abs(expr->binary.left->value.val);
+            was_negative = true;
+        }
+        if(was_negative) {
+            expr->binary.op = BinaryExpression::Operator::SUB;
+        }
+    }
+    else {
+        std::cout << "ERROR: Commutative Rule encountered invalid operator" << std::endl;
+    }
+    std::swap(expr->binary.left, expr->binary.right);
+}
+
+
+
+const AlgebraicRule ALGEBRAIC_RULES[static_cast<uint32_t>(Rules::NUM)] = {
+    // DISTRIBUTIVE
+    {
+        .is_applicable = [](Expression* expr, bool inverse) -> bool {
+            if(inverse) {
+                return IsInverseDistributiveApplicable(expr);
+            }
+            return IsDistributiveApplicable(expr);
+        },
+        .apply = [](ExpressionTree* tree, Expression* expr, bool inverse) -> void {
+            if(inverse) {
+                ApplyInverseDistributive(tree, expr);
+            }
+            ApplyDistributive(tree, expr);
+        },
+    },
+    // COMMUTATIVE
+    {
+        .is_applicable = [](Expression* expr, bool inverse) -> bool {
+            return IsCommutativeApplicable(expr);
+        },
+        .apply = [](ExpressionTree* tree, Expression* expr, bool inverse) -> void {
+            ApplyCommutative(tree, expr);
+        }
+    },
+};
+
+
+
+
+
+
+
+
+
+
+
+
 
 static Expression* FactorOutExpressions(Expression* left, Expression* right, ExpressionTree* tree, Expression** remaining_left, Expression** remaining_right) {
     if(left->type == right->type) {
